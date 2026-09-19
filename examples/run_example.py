@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Jan Kleinert <jan.kleinert@dlr.de>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+"""Minimal example script (see README.md) demonstrating how to: load the adtl
+plugin, read the example recipe, override its seeded parameter, and read back both
+the primal value and the forward-mode derivative of its output - verified against a
+closed-form value, the same discipline grunk-occt's own examples use.
+
+test_adolc.grr.yml computes `w = adtl.sin((x * y) * 6)`, where `x` is seeded with
+AD direction 0 (see its own `me.seed` module) from the parameter `x_val`, and `y` is
+the constant `adtl.adouble.new(17)`. In closed form: `w = sin(102 * x_val)`,
+`dw/d(x_val) = 102 * cos(102 * x_val)`.
+
+Uses grunk's Python bindings (`pip install grunk`, or `pixi run install_python` from
+the grunk repo) rather than C++, since most grunk users script recipes from Python -
+see grunk-occt's own examples/run_example.py for the same choice and reasoning.
+
+Usage:
+    python run_example.py /path/to/libadtl_plugin.so
+"""
+
+import math
+import sys
+from pathlib import Path
+
+import grunk
+
+EXAMPLES_DIR = Path(__file__).resolve().parent
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        sys.exit(f"usage: {sys.argv[0]} /path/to/libadtl_plugin.so")
+    adtl_plugin_path = sys.argv[1]
+
+    state = grunk.state()
+    grunk.plugin.load_native(state, adtl_plugin_path)
+
+    recipe = state.read(str(EXAMPLES_DIR / "test_adolc.grr.yml"))
+
+    x_val = 3.0
+    recipe.get_feature("x_val").set_value(x_val)
+    print(f"overrode x_val = {x_val}")
+
+    # grunk's Python bindings don't expose state.get_type (only used in the original
+    # C++ example to fetch adtl.adouble's getValue/getADValue functions directly) -
+    # reading w's primal/derivative from inside the recipe's own Lua instead sidesteps
+    # that entirely: "w" already carries a native colon-call type hint (see
+    # DESIGN.md), so :getValue()/:getADValue(0) resolve directly, same as
+    # src/adtl_plugin.cpp's own me.seed module already does for :setADValue.
+    recipe.eval("w_value = w:getValue()")
+    recipe.eval("w_derivative = w:getADValue(0)")
+
+    value = recipe.get_feature("w_value").value().as_float()
+    derivative = recipe.get_feature("w_derivative").value().as_float()
+
+    expected_value = math.sin(102.0 * x_val)
+    expected_derivative = 102.0 * math.cos(102.0 * x_val)
+
+    print(f"w = {value} (expected {expected_value})")
+    print(f"dw/d(x_val) = {derivative} (expected {expected_derivative})")
+
+    if not math.isclose(value, expected_value, abs_tol=1e-9):
+        sys.exit(f"value mismatch: got {value}, expected {expected_value}")
+    if not math.isclose(derivative, expected_derivative, abs_tol=1e-9):
+        sys.exit(f"derivative mismatch: got {derivative}, expected {expected_derivative}")
+
+    print("OK: value and derivative match the closed form.")
+
+
+if __name__ == "__main__":
+    main()
