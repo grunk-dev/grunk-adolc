@@ -117,6 +117,102 @@ original (a straight copy would have carried them forward):
   somewhere else, or runs `run_example.py`/`runUnitTests` directly rather than
   through `pixi run`.
 
+## Bootstrap steps automated as pixi tasks (`scripts/install_adolc.sh`, `scripts/build_swig_adolc.sh`)
+
+Found while actually working through the README by hand: building and installing ADOL-C, and
+cloning/building `swig-adol-c`, don't need to stay manual copy-paste shell blocks - both are now
+`pixi run install_adolc` / `pixi run build_swig_adolc` (real shell scripts under `scripts/`, wired
+into `pixi.toml`, both idempotent - safe to re-run, skip the actual build if their output already
+exists). `README.md` still documents the manual, step-by-step version of each in a collapsed
+`<details>` block - not because the scripts are unreliable, but because working through what a
+script does by hand is the fastest way to debug it when something upstream (ADOL-C's own autotools
+build, `swig-adol-c`'s own CMake) breaks in a way the script can't anticipate.
+
+Running these by hand is also how the Lua-include bug below was actually found and confirmed, not
+guessed at from reading `swig-adol-c`'s `CMakeLists.txt` alone.
+
+## `swig-adol-c`'s own `CMakeLists.txt` never adds Lua's include directory to any target
+
+A real upstream bug, confirmed against `swig-adol-c`'s actual `CMakeLists.txt` (not this repo's
+code, and not a mistake in this repo's own README/instructions): it calls `find_package(Lua
+REQUIRED)`, which correctly resolves `LUA_INCLUDE_DIR`, but only ever consumes
+`${LUA_LIBRARIES}` afterward (in `target_link_libraries(adtl adolc ${LUA_LIBRARIES})`) -
+`LUA_INCLUDE_DIR` is never passed to `include_directories()`/`target_include_directories()`
+anywhere in that file. The build fails compiling the SWIG-generated wrapper itself
+(`adoubleLUA_wrap.cxx:772:10: fatal error: lua.h: No such file or directory`) regardless of
+`CMAKE_PREFIX_PATH` - the include path for the actual C++ compile step was simply never wired up in
+the first place, so there is no `CMAKE_PREFIX_PATH`/`find_package` invocation on our side that
+could have avoided it.
+
+`scripts/build_swig_adolc.sh` works around it by passing Lua's include directory explicitly via
+`-D CMAKE_CXX_FLAGS="-I$CONDA_PREFIX/include"` at configure time - verified end-to-end (clean
+clone through a successful `adtl.so` build) rather than reasoned about from the `CMakeLists.txt`
+alone. This is a workaround, not a fix: it does not touch `swig-adol-c`'s own source, so it needs
+to keep being applied at every configure until (if ever) `swig-adol-c` adds the missing
+`include_directories(${LUA_INCLUDE_DIR})` call itself upstream - worth reporting/fixing directly if
+you have write access to that repo.
+
+## `tests/test_recipe.cpp`: adtl_plugin through a real `grunk::recipe`
+
+`tests/test_load.cpp` only ever drives `adtl_plugin` through `create_env()`'s raw, undecorated Lua
+- never through `grunk::recipe`'s dependency-tracked `steps:`/`outputs:` layer, the same "add a
+recipe-level test later" gap `grunk-occt`'s own migration plan flagged and has now also closed (see
+its `DESIGN.md`'s "Test-harness shape"). Working through this directly (not just reasoning about it)
+surfaced two real, distinct gaps - both are hazards for *any* SWIG/`register_external_type`-bridged
+plugin, not anything specific to ADOL-C:
+
+### `adtl.adouble` colon-call dispatch fails inside a recipe (but not in a plain `env.eval`)
+
+`w:getValue()` on a value born from `adtl.sin(...)` inside `recipe.eval(...)` throws `"Feature: no
+static type information available for \"getValue\""`, even though the identical call succeeds in
+`test_load.cpp`'s own `create_env()`. Root cause, confirmed by reading grunk's own source (not
+guessed at): `DynamicFeature::__index`'s colon-call dispatch (`grunk/dynamic/state.hpp`) only
+resolves a method if the feature carries a static type hint, stamped exclusively by
+`usertype_proxy::add_constructors`/`add_member_function` (`grunk/dynamic/usertype_proxy.hpp`'s own
+`set_return_type_hint` call) for a native `register_type<T>()`-registered type.
+`register_external_type`'s own `external_type_proxy` (`grunk/dynamic/external_type_proxy.hpp`) -
+which is what bridges `adtl.adouble`, a SWIG-Lua type with no compile-time C++ type sol2 can see -
+builds its constructor/methods via the same `create_function_meta` helper but never calls
+`set_return_type_hint` anywhere in that file. This is the *same symptom* as
+[grunk-dev/grunk#285](https://github.com/grunk-dev/grunk/issues/285) (`add_bases<...>()` not walked
+by colon-call dispatch, filed for `grunk-occt`), but a genuinely different root cause - filed
+separately as [grunk-dev/grunk#286](https://github.com/grunk-dev/grunk/issues/286).
+
+Workaround, used throughout `examples/test_adolc.grr.yml` and `tests/test_recipe.cpp`: the
+qualified `Type.method(instance, args...)` form (`adtl.adouble.getValue(w)`) instead of
+`w:getValue()` - the same form grunk's own `tests/cpp/recipe_plugin.cpp` already establishes for a
+hand-registered C++ plugin type (`cppplugin.Length.get_x(l)`), so this isn't a novel pattern, just
+one this repo hadn't needed until now.
+
+### Mutating calls inside `steps:` may silently never run under lazy evaluation
+
+A more subtle finding, worth its own heading: even the *qualified*-call workaround above does not
+fix a **mutating** method called for its side effect alone. `adtl.adouble.setADValue(x, 0, 1.0)`
+placed directly in `steps:` compiles and runs with no error, but the seeded AD direction is silently
+lost - `getADValue` on anything downstream reads back `0`, as if the call never happened.
+
+Root cause (`grunk/dynamic/ActionDynamic.hpp`'s `eval()`): every `steps:` statement becomes its own
+lazily-evaluated DAG node (`ActionDynamic`), and `eval()` only ever writes back the call's own
+*return* value (`output->set_value(res[0])`) to that node's own feature - there is no concept of "this
+call also mutated one of its input arguments in place." Combined with grunk's lazy, pull-based
+evaluation (a node only runs when something downstream actually reads its value), a call whose
+return value nothing ever reads and which nothing depends on - exactly `setADValue`'s own case, since
+its meaningful effect is the mutation, not its return value - may simply never be scheduled to run at
+all.
+
+Fixed the same way `examples/test_adolc.grr.yml`'s own `me.seed` module already did, independently,
+before this was understood this precisely: do the mutating call inside a `Recipe::insert_module_script`
+module. A module function's *body* runs as a single, eagerly-executed plain Lua call (not a graph of
+individually-lazy statements) - only the module call *as a whole* is tracked, via its final return
+value - so the mutation reliably happens before that return value is ever read.
+
+This is not an ADOL-C-specific or even `register_external_type`-specific hazard: it applies equally
+to any mutating/out-parameter-style call placed directly in `steps:`, regardless of how the type
+being mutated is registered. `grunk-occt`'s own `DESIGN.md` ("Non-const-reference (\"out\")
+parameters are supported, deliberately") had already flagged this exact concern for OCCT's own
+out-params as a theoretical, untested-so-far risk before this repo's `tests/test_recipe.cpp`
+independently reproduced it for a completely unrelated type - now cross-referenced from both sides.
+
 ## Adopted `GRUNK_PLUGIN_INFO` from the start
 
 `src/adtl_plugin.cpp` uses `GRUNK_PLUGIN_INFO("adtl", "2.7.2")` rather than the

@@ -49,6 +49,10 @@ SKBUILD_CMAKE_DEFINE = "GRUNK_WITH_TASKFLOW=OFF"
 LD_LIBRARY_PATH = "$PIXI_PROJECT_ROOT/build/_deps/ADOL-C/adolc_base/lib64:$PIXI_PROJECT_ROOT/build/_deps/ADOL-C/adolc_base/lib:$LD_LIBRARY_PATH"
 
 [tasks]
+install_adolc = { cmd = "bash scripts/install_adolc.sh", description = "Download, build, and install ADOL-C 2.7.2 into build/_deps/ADOL-C/adolc_base (idempotent). See README.md." }
+
+build_swig_adolc = { cmd = "bash scripts/build_swig_adolc.sh", depends-on = ["install_adolc"], description = "Clone and build swig-adol-c (DLR-internal - needs network/credential access) against the ADOL-C install above, producing adtl.so (idempotent). See README.md." }
+
 configure = { cmd = [
     "cmake",
     "-G", "Ninja",
@@ -70,5 +74,5 @@ test = { cmd = "ctest --test-dir build --output-on-failure", depends-on = ["buil
 run_examples = { cmd = "python examples/run_example.py build/libadtl_plugin.so", depends-on = ["build"], description = "Run the example recipe under examples/ (see README.md's own \"Examples\" section)." }
 
 [tasks.all]
-depends-on = ["configure", "build", "test", "run_examples"]
-description = "Configure, build, test, and run the examples."
+depends-on = ["build_swig_adolc", "configure", "build", "test", "run_examples"]
+description = "Bootstrap ADOL-C/swig-adol-c if needed, then configure, build, test, and run the examples."

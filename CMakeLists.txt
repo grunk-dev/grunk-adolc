@@ -99,8 +99,9 @@ if(GRUNK_ADOLC_TESTS)
 
     add_executable(runUnitTests
         tests/test_load.cpp
+        tests/test_recipe.cpp
     )
-    target_link_libraries(runUnitTests PRIVATE grunk::plugin GTest::gtest_main)
+    target_link_libraries(runUnitTests PRIVATE grunk::plugin grunk::recipe GTest::gtest_main)
     target_compile_definitions(runUnitTests PRIVATE
         ADTL_PLUGIN_SO_PATH="$<TARGET_FILE:adtl_plugin>"
     )

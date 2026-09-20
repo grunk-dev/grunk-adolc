@@ -26,12 +26,23 @@ around a compiled Lua module wrapping ADOL-C, nothing more.
 - [pixi](https://pixi.sh/)
 - Access to `swig-adol-c` (DLR-internal GitLab - see below)
 
-The two sections below are meant to be run as **one continuous shell session** from
-this repo's own root directory, in order - each sets a variable (`ADOLC_PREFIX`,
-`PIXI_ENV`) the next section actually uses, rather than a placeholder you have to
-remember to substitute by hand later.
-
 ### 1. Build and install ADOL-C 2.7.2
+
+```bash
+pixi install
+pixi run install_adolc
+```
+
+Downloads, builds, and installs ADOL-C 2.7.2 into `build/_deps/ADOL-C/adolc_base`
+(`scripts/install_adolc.sh` - idempotent, safe to re-run). Needs
+`autoreconf`/`automake`/`libtool` on `PATH`.
+
+**Where ADOL-C actually installs its library** (`lib` vs. `lib64`) depends on your
+distro's own autotools defaults - step 2 below detects this itself, but if you ever
+need to know: `ls build/_deps/ADOL-C/adolc_base/lib*`.
+
+<details>
+<summary>What this does, if you'd rather run it by hand (or it fails partway)</summary>
 
 ```bash
 mkdir -p build/_deps && cd build/_deps
@@ -50,17 +61,7 @@ make install
 cd ../../..   # back to this repo's own root
 ```
 
-`ADOLC_PREFIX` is only ever passed to `swig-adol-c`'s own `cmake` invocation next -
-this repo's own build never names ADOL-C itself (it's confined entirely behind
-`adtl.so` and, from there, `adtl_plugin.so`).
-
-**Where ADOL-C actually installs its library** (`$ADOLC_PREFIX/lib` vs.
-`$ADOLC_PREFIX/lib64`) depends on your distro's own autotools defaults - check which
-one exists after `make install` before step 2 below, which needs the right one:
-
-```bash
-ls "$ADOLC_PREFIX"/lib* 2>/dev/null   # confirm lib vs lib64 before continuing
-```
+</details>
 
 ### 2. Build the grunk/ADOL-C Lua interface (`adtl.so`)
 
@@ -69,11 +70,31 @@ ls "$ADOLC_PREFIX"/lib* 2>/dev/null   # confirm lib vs lib64 before continuing
 branch `lua_wrapper`. You need DLR network/credential access to clone it; this is
 the reason this repo has no CI configured (see `DESIGN.md`).
 
-From this repo's own root (continuing the same shell session, `$ADOLC_PREFIX` still
-set from step 1):
+```bash
+pixi run build_swig_adolc
+```
+
+Clones `swig-adol-c` and builds it against step 1's ADOL-C install
+(`scripts/build_swig_adolc.sh` - idempotent, safe to re-run), producing `adtl.so` in
+`build/_deps/swig-adol-c/build` (the default `ADTL_LIB_DIR` `pixi run configure`
+passes - override it, e.g. `pixi run configure Release <path>`, if yours ends up
+elsewhere - see `pixi.toml`'s `configure` task).
+
+This script also works around a real bug in `swig-adol-c`'s own `CMakeLists.txt`:
+it resolves Lua's include directory via `find_package(Lua REQUIRED)` but never
+actually adds it to any target's include path (only `${LUA_LIBRARIES}`, for
+linking, is used) - so a plain `cmake`/`make` following its own README fails with
+`lua.h: No such file or directory` regardless of `CMAKE_PREFIX_PATH`, confirmed by
+reading its `CMakeLists.txt` directly. The script passes Lua's include directory
+via `CMAKE_CXX_FLAGS` instead, sidestepping this without patching `swig-adol-c`
+itself - see the script's own comment. Worth fixing upstream directly if you have
+write access to that repo; harmless to leave this workaround in place either way.
+
+<details>
+<summary>What this does, if you'd rather run it by hand (or it fails partway)</summary>
 
 ```bash
-pixi install   # installs cmake/ninja/lua/sol2/... into .pixi/envs/default
+export ADOLC_PREFIX="$(pwd)/build/_deps/ADOL-C/adolc_base"
 export PIXI_ENV="$(pwd)/.pixi/envs/default"
 
 mkdir -p build/_deps && cd build/_deps
@@ -85,16 +106,17 @@ mkdir build && cd build
 cmake -D ADOLC_INCLUDE_DIR="$ADOLC_PREFIX/include" \
       -D ADOLC_LIB_DIR="$ADOLC_PREFIX/lib64" \
       -D CMAKE_PREFIX_PATH="$PIXI_ENV" \
+      -D CMAKE_CXX_FLAGS="-I$PIXI_ENV/include" \
       ..
 make
 
 cd ../../../..   # back to this repo's own root
 ```
 
-Replace `lib64` above with `lib` if that's what step 1's own check found. This
-produces `adtl.so` in `build/_deps/swig-adol-c/build` (the default `ADTL_LIB_DIR`
-`pixi run configure` passes - override it, e.g. `pixi run configure Release
-<path>`, if yours ends up elsewhere - see `pixi.toml`'s `configure` task).
+Replace `lib64` above with `lib` if that's what ADOL-C's own install used - see
+step 1.
+
+</details>
 
 **Runtime note:** `adtl_plugin.so` links directly against `adtl.so`, which in turn
 depends on ADOL-C's own shared library (`libadolc.so`, in `$ADOLC_PREFIX/lib` or
@@ -128,10 +150,12 @@ pixi run all
 Or step by step:
 
 ```bash
-pixi run configure      # configure the CMake build (see pixi.toml for the ADTL_LIB_DIR arg)
-pixi run build          # build adtl_plugin and the test harness
-pixi run test           # run the gtest suite (tests/test_load.cpp)
-pixi run run_examples   # run examples/run_example.py against the built plugin
+pixi run install_adolc      # step 1 above, if not already done
+pixi run build_swig_adolc   # step 2 above, if not already done
+pixi run configure          # configure the CMake build (see pixi.toml for the ADTL_LIB_DIR arg)
+pixi run build              # build adtl_plugin and the test harness
+pixi run test               # run the gtest suite (tests/test_load.cpp)
+pixi run run_examples       # run examples/run_example.py against the built plugin
 ```
 
 ## Examples

@@ -15,3 +15,18 @@ steps: |
   x = me.seed(x_val)
   z = x * y
   w = adtl.sin((z * 6))
+
+  -- adtl.adouble.getValue(w)/getADValue(w, 0) - the qualified "Type.method(instance,
+  -- args...)" form, not w:getValue() - a recipe step's own value is wrapped as a
+  -- grunk::DynamicFeature, which only carries a static type hint for values born
+  -- from a register_type<T>()-registered constructor/member function; adtl.adouble
+  -- is instead bridged via register_external_type (see src/adtl_plugin.cpp), whose
+  -- auto-discovered methods never stamp one - see DESIGN.md's "adtl.adouble colon-call
+  -- dispatch fails inside a recipe (but not in a plain env.eval)" section
+  -- (grunk-dev/grunk#286).
+  w_value = adtl.adouble.getValue(w)
+  w_derivative = adtl.adouble.getADValue(w, 0)
+outputs:
+  w: w
+  w_value: w_value
+  w_derivative: w_derivative

@@ -46,6 +46,11 @@ TEST(Load, AdoubleRoundTripsThroughLua)
     grunk::state state;
     grunk::plugin::load_native(state, ADTL_PLUGIN_SO_PATH);
 
+    // x:__tostring() rather than the Lua base-library global tostring(x) - this
+    // env (like PluginLoadsAndReportsItself's own env above) has no base library
+    // (see create_env()'s own doc comment), so the global `tostring` doesn't exist
+    // here at all; adtl_plugin.cpp's own __index override makes the metamethod
+    // itself reachable directly under this key instead (see its doc comment).
     auto env = state.create_env();
     auto res = env.eval(R"(
         x = adtl.adouble.new(2.0)
@@ -53,7 +58,7 @@ TEST(Load, AdoubleRoundTripsThroughLua)
         y = adtl.sin(x)
         value = y:getValue()
         derivative = y:getADValue(0)
-        text = tostring(x)
+        text = x:__tostring()
     )");
     ASSERT_TRUE(res.valid());
 

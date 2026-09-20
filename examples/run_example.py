@@ -11,7 +11,9 @@ closed-form value, the same discipline grunk-occt's own examples use.
 test_adolc.grr.yml computes `w = adtl.sin((x * y) * 6)`, where `x` is seeded with
 AD direction 0 (see its own `me.seed` module) from the parameter `x_val`, and `y` is
 the constant `adtl.adouble.new(17)`. In closed form: `w = sin(102 * x_val)`,
-`dw/d(x_val) = 102 * cos(102 * x_val)`.
+`dw/d(x_val) = 102 * cos(102 * x_val)`. The recipe's own steps: block computes and
+exposes `w_value`/`w_derivative` as outputs: already (see its own comment) - this
+script only overrides the input parameter and reads the two outputs back.
 
 Uses grunk's Python bindings (`pip install grunk`, or `pixi run install_python` from
 the grunk repo) rather than C++, since most grunk users script recipes from Python -
@@ -44,17 +46,12 @@ def main() -> None:
     recipe.get_feature("x_val").set_value(x_val)
     print(f"overrode x_val = {x_val}")
 
-    # grunk's Python bindings don't expose state.get_type (only used in the original
-    # C++ example to fetch adtl.adouble's getValue/getADValue functions directly) -
-    # reading w's primal/derivative from inside the recipe's own Lua instead sidesteps
-    # that entirely: "w" already carries a native colon-call type hint (see
-    # DESIGN.md), so :getValue()/:getADValue(0) resolve directly, same as
-    # src/adtl_plugin.cpp's own me.seed module already does for :setADValue.
-    recipe.eval("w_value = w:getValue()")
-    recipe.eval("w_derivative = w:getADValue(0)")
-
-    value = recipe.get_feature("w_value").value().as_float()
-    derivative = recipe.get_feature("w_derivative").value().as_float()
+    # test_adolc.grr.yml's own steps: already compute w_value/w_derivative (via the
+    # qualified adtl.adouble.getValue(w)/getADValue(w, 0) form - see its own comment
+    # and DESIGN.md for why not w:getValue()) and declare all three as outputs:, so
+    # reading them back here is just get_output(...) - no extra recipe.eval() needed.
+    value = recipe.get_output("w_value").value().as_float()
+    derivative = recipe.get_output("w_derivative").value().as_float()
 
     expected_value = math.sin(102.0 * x_val)
     expected_derivative = 102.0 * math.cos(102.0 * x_val)
