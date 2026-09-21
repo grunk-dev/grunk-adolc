@@ -34,20 +34,97 @@ example's `main()`-runs-everything shape).
 `#include` list (`grunk/grunk.hpp`, `sol/types.hpp`) already confirmed it never
 touched OCCT/geoml at all.
 
+## Native `adtl::adouble` binding, generated, not hand-written
+
+Superseding both "Origin" above (this plugin's own registration mechanism, not just
+its build) and the whole SWIG-era discussion below (kept, not deleted, for
+historical reference - see "What changed" at the end of this section).
+
+**Why**: the real, driving reason is a long-term goal, not something this repo
+needed on its own - AD-enabled workflows where a differentiated `geoml` plugin and
+`grunk-occt`'s own AD-enabled `occt_plugin` need to pass `adouble` values to each
+other directly. Two independently-registered native sol2 usertypes for "the same"
+underlying value can never do that; the SWIG-based `register_external_type`
+binding this repo used until now made it worse, not better - a SWIG-Lua userdata
+and a native sol2 usertype are different C-level representations entirely, so
+bridging *that* would have meant real, fragile, hand-rolled SWIG-runtime interop
+code (`SWIG_NewPointerObj`/`SWIG_TypeQuery`) in every native consumer.
+
+**What actually works instead**: sol2 usertypes are keyed by C++ type identity,
+shared automatically across every plugin loaded into the same `lua_State` - so one
+native `register_type<adtl::adouble>()` call, done here, is automatically visible
+to any other native plugin (`grunk-occt`'s own AD-enabled build) that also names
+`adtl::adouble`/`Standard_Adouble` (the same C++ type, in adOCCT), with **no
+bridging code needed at all**. See `grunk-occt`'s own `DESIGN.md`'s "Reusing one
+shared Standard_Real/adtl::adouble registration, not two" for that side of it.
+
+**Generated, not hand-written, via the same generator `grunk-occt` uses**
+(`codegen/generate.py` - a deliberate, temporary duplicate; see its own top
+comment for why and what the real fix is), pointed at ADOL-C's own public
+`adtl.h` (see `codegen/config.yml`) instead of an OCCT header. This needed real
+new generator capability (operator overloads, friend free functions - see
+`grunk-occt`'s own `codegen/README.md` for the mechanism) and surfaced several
+real, previously-latent generator bugs along the way, all fixed in `grunk-occt`'s
+copy first and synced here after (see its own `DESIGN.md` for the fixes
+themselves - the "reversed operand always exists" false assumption, a template-
+specialization check that false-positived on any namespaced class, a
+namespace-reopened-twice duplicate-registration bug, and a bare-name-vs-namespace-
+scope naming mismatch): none of them were anticipated in advance, all four were
+found by actually generating against ADOL-C's real header and fixing what broke,
+not by reasoning about the generator's own code in the abstract.
+
+The result (`generated/adouble.cpp`) covers ADOL-C's entire practically-relevant
+API surface automatically: the constructor, `getValue`/`setValue`/`getADValue`/
+`setADValue`, every arithmetic/comparison operator (`+ - * / == < <=`, both
+member and reversed-literal forms, e.g. `x + 5` and `5 + x`), and every math
+free function (`sin`, `cos`, `exp`, `pow`, ...) - registered under their own bare
+name (`adtl.sin`, not `adtl.adtl_sin`), a distinct naming rule from `grunk-occt`'s
+own "static namespace class" convention (`occt.TopoDS_Face`) this needed adding,
+since ADOL-C's `adtl` is a genuine C++ namespace, not a class imitating one. Only
+`src/adtl_plugin.cpp`'s own `__tostring` registration (grunk's recipe-
+serialization convention - see its own comment) remains hand-written: the
+generator has no concept of that convention to emit it from, and - unlike the
+previous SWIG-based version's own `__tostring` bridging - needs no special
+handling at all for a native usertype.
+
+**Real, load-bearing side effect, not just a nice cleanup**: dropping SWIG means
+`grunk-occt`'s own AD-enabled build no longer needs to register `Standard_Real`
+itself at all - see its `occt_ad_support.hpp`/`register_occt()`'s own defensive
+`state.plugins()` check for `"adtl"`, which now throws a clear error instead of
+`occt_plugin::to_real()` silently taking its non-AD branch for every call, if
+this plugin isn't loaded first.
+
+**What changed, concretely**: `src/adtl_plugin.cpp` was rewritten (from a thin
+shim around a precompiled `adtl.so` to a genuine native plugin, linking ADOL-C's
+own public headers/library directly); `CMakeLists.txt` dropped `swig-adol-c`/
+`ADTL_LIB_DIR` entirely in favor of `pkg_check_modules(ADOLC ...)` (matching
+`grunk-occt`'s own `occt_adolc`'s identical approach) plus the new
+`codegen/`/`generated/` machinery; `scripts/build_swig_adolc.sh` was deleted (no
+longer needed - `scripts/install_adolc.sh` alone is now sufficient). **The
+previous SWIG-based version is preserved, not lost**, on the `swig-adtl-plugin`
+branch (pushed to `origin`) - kept for reference, e.g. if the Python-bindings-
+consistency angle "Relationship to grunk-occt..." below once valued ever becomes
+a hard requirement rather than a soft one.
+
 ## Relationship to grunk-occt and the future grunk-geoml
 
 Three sibling repos, one per concern, deliberately kept separate rather than one
 combined "grunk CAD+AD" project:
 
-- **`grunk-occt`** - OCCT bindings for grunk. No AD dependency at all today; its own
-  generated code already carries a `GRUNK_OCCT_WITH_ADOLC`-gated dual-emission form
-  for every `Standard_Real` parameter (see its own DESIGN.md's "Standard_Real /
-  AD-portability rule"), unexercised until Step 7 of its migration plan actually
-  builds against an AD-enabled OCCT (`adOCCT`).
-- **`grunk-adolc`** (this repo) - a standalone ADOL-C plugin, zero OCCT/CAD
-  dependency. Reusable by *any* grunk-based project wanting plain AD, not just a
-  CAD one - genuinely general-purpose, which is exactly why it doesn't live inside
-  `grunk-occt` itself.
+- **`grunk-occt`** - OCCT bindings for grunk. No AD dependency at all in its
+  default build; its own generated code carries a `GRUNK_OCCT_WITH_ADOLC`-gated
+  dual-emission form for every `Standard_Real` parameter (see its own DESIGN.md's
+  "Standard_Real / AD-portability rule"), activated by its own
+  `GRUNK_OCCT_ENABLE_AD` build option - see its own DESIGN.md for the AD
+  validation milestone this plugin is now a real, load-bearing dependency of (not
+  just conceptually related), per "Native adtl::adouble binding" above.
+- **`grunk-adolc`** (this repo) - the canonical native ADOL-C plugin: a real,
+  compile-time dependency on ADOL-C's own public headers/library, zero OCCT/CAD
+  dependency of its own. Reusable by *any* grunk-based project wanting plain AD,
+  not just a CAD one - genuinely general-purpose, which is exactly why it doesn't
+  live inside `grunk-occt` itself, and why its own native `adtl::adouble`
+  registration is the one `grunk-occt`'s AD-enabled build depends on rather than
+  duplicating.
 - **`grunk-geoml`** (deferred, not started) - will mirror
   `cad_autodiff`'s own stages 2/3: a plain `geoml`-based plugin, and an AD-enabled
   counterpart built against `adOCCT` + `geoml`'s own `feature/autodiff` branch,
@@ -68,23 +145,24 @@ whether `grunk-adolc`/`grunk-geoml` exist.
 
 ## Platform scope
 
-Linux-only (`pixi.toml`'s `platforms = ["linux-64"]`), unlike `grunk-occt`'s 3-platform
-policy. This mirrors the original migration plan's own accepted exception for
-AD-enabled work ("may stay Linux-only/best-effort given how involved adOCCT/ADOL-C's
-own build already is") - `swig-adol-c`, this plugin's own load-bearing dependency,
-has only ever been built/verified on Linux, and there's no reason to speculatively
-widen platform scope for a dependency that's never been tried anywhere else.
+Still Linux-only (`pixi.toml`'s `platforms = ["linux-64"]`), unlike `grunk-occt`'s
+3-platform policy - but the *original* reason no longer applies: this plugin no
+longer depends on `swig-adol-c` (never built/verified anywhere but Linux) at all,
+since "Native adtl::adouble binding" above dropped it entirely. ADOL-C itself
+builds cross-platform in principle. Widening this is a real, reasonable,
+currently out-of-scope follow-up - gated on someone actually verifying ADOL-C's
+own autotools-based build on macOS/Windows, not on anything specific to this repo
+anymore.
 
 ## No CI configured (yet)
 
-`swig-adol-c` (see README.md) is hosted on a **DLR-internal GitLab instance** - a
-public CI runner (GitHub Actions or similar) has no network path to clone it without
-provisioning credentials (a deploy key/PAT as a repo secret) that don't exist yet.
-Rather than commit a CI workflow that would just fail on every push (worse than no
-CI - a permanently-red check nobody can act on), this is left undone and flagged
-here rather than silently skipped. Setting up CI for this repo is a real, separate
-follow-up task, gated on deciding how (or whether) to give a public runner
-DLR-internal network/credential access - not attempted as part of this extraction.
+The *original* reason (`swig-adol-c`, DLR-internal, no public-runner network path
+without provisioning credentials that don't exist) no longer applies either, now
+that "Native adtl::adouble binding" above dropped that dependency - ADOL-C itself
+is public (`github.com/coin-or/ADOL-C`). Setting up CI is now genuinely possible
+in a way it simply wasn't before; still not done as part of that same change
+(a real, separate follow-up task - building ADOL-C from source in CI takes real
+time and its own share of care, not attempted speculatively here).
 
 ## Build instructions are copy-paste-executable, not prose placeholders
 
@@ -117,40 +195,24 @@ original (a straight copy would have carried them forward):
   somewhere else, or runs `run_example.py`/`runUnitTests` directly rather than
   through `pixi run`.
 
-## Bootstrap steps automated as pixi tasks (`scripts/install_adolc.sh`, `scripts/build_swig_adolc.sh`)
+## Bootstrap steps automated as a pixi task (`scripts/install_adolc.sh`)
 
-Found while actually working through the README by hand: building and installing ADOL-C, and
-cloning/building `swig-adol-c`, don't need to stay manual copy-paste shell blocks - both are now
-`pixi run install_adolc` / `pixi run build_swig_adolc` (real shell scripts under `scripts/`, wired
-into `pixi.toml`, both idempotent - safe to re-run, skip the actual build if their output already
-exists). `README.md` still documents the manual, step-by-step version of each in a collapsed
-`<details>` block - not because the scripts are unreliable, but because working through what a
-script does by hand is the fastest way to debug it when something upstream (ADOL-C's own autotools
-build, `swig-adol-c`'s own CMake) breaks in a way the script can't anticipate.
+Found while actually working through the README by hand: building and installing ADOL-C doesn't
+need to stay a manual copy-paste shell block - it's now `pixi run install_adolc` (a real shell
+script under `scripts/`, wired into `pixi.toml`, idempotent - safe to re-run, skips the actual
+build if its output already exists). `README.md` still documents the manual, step-by-step version
+in a collapsed `<details>` block - not because the script is unreliable, but because working
+through what it does by hand is the fastest way to debug it if something upstream (ADOL-C's own
+autotools build) breaks in a way the script can't anticipate.
 
-Running these by hand is also how the Lua-include bug below was actually found and confirmed, not
-guessed at from reading `swig-adol-c`'s `CMakeLists.txt` alone.
-
-## `swig-adol-c`'s own `CMakeLists.txt` never adds Lua's include directory to any target
-
-A real upstream bug, confirmed against `swig-adol-c`'s actual `CMakeLists.txt` (not this repo's
-code, and not a mistake in this repo's own README/instructions): it calls `find_package(Lua
-REQUIRED)`, which correctly resolves `LUA_INCLUDE_DIR`, but only ever consumes
-`${LUA_LIBRARIES}` afterward (in `target_link_libraries(adtl adolc ${LUA_LIBRARIES})`) -
-`LUA_INCLUDE_DIR` is never passed to `include_directories()`/`target_include_directories()`
-anywhere in that file. The build fails compiling the SWIG-generated wrapper itself
-(`adoubleLUA_wrap.cxx:772:10: fatal error: lua.h: No such file or directory`) regardless of
-`CMAKE_PREFIX_PATH` - the include path for the actual C++ compile step was simply never wired up in
-the first place, so there is no `CMAKE_PREFIX_PATH`/`find_package` invocation on our side that
-could have avoided it.
-
-`scripts/build_swig_adolc.sh` works around it by passing Lua's include directory explicitly via
-`-D CMAKE_CXX_FLAGS="-I$CONDA_PREFIX/include"` at configure time - verified end-to-end (clean
-clone through a successful `adtl.so` build) rather than reasoned about from the `CMakeLists.txt`
-alone. This is a workaround, not a fix: it does not touch `swig-adol-c`'s own source, so it needs
-to keep being applied at every configure until (if ever) `swig-adol-c` adds the missing
-`include_directories(${LUA_INCLUDE_DIR})` call itself upstream - worth reporting/fixing directly if
-you have write access to that repo.
+(A second script, `scripts/build_swig_adolc.sh`, existed here for the same reason against
+`swig-adol-c` - deleted along with that whole dependency, see "Native adtl::adouble binding,
+generated, not hand-written" above; still present, for reference, on the `swig-adtl-plugin`
+branch, along with the real upstream `swig-adol-c` `CMakeLists.txt` bug it had to work around - a
+`find_package(Lua REQUIRED)` call whose resolved `LUA_INCLUDE_DIR` was never actually passed to
+any target, confirmed by reading that file directly, not guessed at. Moot now that this repo no
+longer builds against `swig-adol-c` at all, but worth reporting/fixing upstream directly if you
+have write access to that repo and still use it elsewhere.)
 
 ## `tests/test_recipe.cpp`: adtl_plugin through a real `grunk::recipe`
 
@@ -158,31 +220,36 @@ you have write access to that repo.
 - never through `grunk::recipe`'s dependency-tracked `steps:`/`outputs:` layer, the same "add a
 recipe-level test later" gap `grunk-occt`'s own migration plan flagged and has now also closed (see
 its `DESIGN.md`'s "Test-harness shape"). Working through this directly (not just reasoning about it)
-surfaced two real, distinct gaps - both are hazards for *any* SWIG/`register_external_type`-bridged
-plugin, not anything specific to ADOL-C:
+surfaced two real, distinct gaps:
 
-### `adtl.adouble` colon-call dispatch fails inside a recipe (but not in a plain `env.eval`)
+### `adtl.adouble` colon-call dispatch inside a recipe - fixed by switching to native registration
 
-`w:getValue()` on a value born from `adtl.sin(...)` inside `recipe.eval(...)` throws `"Feature: no
-static type information available for \"getValue\""`, even though the identical call succeeds in
+**Resolved, not just worked around**, since "Native adtl::adouble binding" above - kept here for
+the history, since the root cause and the fix are worth understanding together. Originally:
+`w:getValue()` on a value born from `adtl.sin(...)` inside `recipe.eval(...)` threw `"Feature: no
+static type information available for \"getValue\""`, even though the identical call succeeded in
 `test_load.cpp`'s own `create_env()`. Root cause, confirmed by reading grunk's own source (not
 guessed at): `DynamicFeature::__index`'s colon-call dispatch (`grunk/dynamic/state.hpp`) only
 resolves a method if the feature carries a static type hint, stamped exclusively by
 `usertype_proxy::add_constructors`/`add_member_function` (`grunk/dynamic/usertype_proxy.hpp`'s own
-`set_return_type_hint` call) for a native `register_type<T>()`-registered type.
-`register_external_type`'s own `external_type_proxy` (`grunk/dynamic/external_type_proxy.hpp`) -
-which is what bridges `adtl.adouble`, a SWIG-Lua type with no compile-time C++ type sol2 can see -
-builds its constructor/methods via the same `create_function_meta` helper but never calls
-`set_return_type_hint` anywhere in that file. This is the *same symptom* as
-[grunk-dev/grunk#285](https://github.com/grunk-dev/grunk/issues/285) (`add_bases<...>()` not walked
-by colon-call dispatch, filed for `grunk-occt`), but a genuinely different root cause - filed
-separately as [grunk-dev/grunk#286](https://github.com/grunk-dev/grunk/issues/286).
+`set_return_type_hint` call) for a native `register_type<T>()`-registered type. The *previous*
+SWIG-based binding's own `register_external_type`/`external_type_proxy` mechanism
+(`grunk/dynamic/external_type_proxy.hpp`) built its constructor/methods via the same
+`create_function_meta` helper but never called `set_return_type_hint` anywhere in that file - the
+*same symptom* as [grunk-dev/grunk#285](https://github.com/grunk-dev/grunk/issues/285)
+(`add_bases<...>()` not walked by colon-call dispatch, filed for `grunk-occt`), but a genuinely
+different root cause, filed separately as
+[grunk-dev/grunk#286](https://github.com/grunk-dev/grunk/issues/286).
 
-Workaround, used throughout `examples/test_adolc.grr.yml` and `tests/test_recipe.cpp`: the
-qualified `Type.method(instance, args...)` form (`adtl.adouble.getValue(w)`) instead of
-`w:getValue()` - the same form grunk's own `tests/cpp/recipe_plugin.cpp` already establishes for a
-hand-registered C++ plugin type (`cppplugin.Length.get_x(l)`), so this isn't a novel pattern, just
-one this repo hadn't needed until now.
+The qualified `Type.method(instance, args...)` form (`adtl.adouble.getValue(w)`) was the
+workaround at the time (still used in a few places, e.g.
+`QualifiedCallWorksInsideRecipeAndReactsToParameterChanges`, for reasons unrelated to this specific
+gap - see the next section). Once this repo switched to native `register_type<adtl::adouble>()`
+registration, `usertype_proxy::add_constructors`' own `set_return_type_hint` call runs for every
+`adouble`-returning call, so `w:getValue()` and `w:getADValue(0)` now resolve directly - see
+`AdoubleColonCallWorksInsideRecipe`, a deliberate regression guard the *other* direction from what
+it originally checked. `#286` remains open in grunk itself (a real gap for anything still using
+`register_external_type`), it just no longer applies to this type.
 
 ### Mutating calls inside `steps:` may silently never run under lazy evaluation
 

@@ -11,12 +11,19 @@
 // the recipe layer too, but only via the Python bindings and only end-to-end, not as
 // a fast, always-run C++ unit test.
 //
-// Also the actual reproduction of the recipe-level dispatch gap documented in
-// DESIGN.md ("Recipe-level colon-call dispatch on adtl.adouble values"): w:getValue()
-// fails inside a recipe step even though the identical call succeeds in
-// test_load.cpp's own create_env() (no recipe/dependency-tracking involved there) -
-// see AdoubleColonCallFailsInsideRecipe below, and QualifiedCallWorksInsideRecipe for
-// the working alternative examples/test_adolc.grr.yml itself now uses.
+// Also confirms a real, previously-open question is now closed: colon-call
+// dispatch (w:getValue()) inside a recipe step used to fail for adtl.adouble
+// specifically, back when it was registered via SWIG/register_external_type (see
+// grunk-dev/grunk#286 and DESIGN.md's "Native adtl::adouble binding, generated,
+// not hand-written") - AdoubleColonCallWorksInsideRecipe below is a deliberate
+// regression guard the other direction from what it used to be: this repo's own
+// switch to native register_type<adtl::adouble>() registration means
+// usertype_proxy::add_constructors' own set_return_type_hint call now runs for
+// every adouble-returning call, so the recipe layer's own DynamicFeature type-hint
+// dispatch has everything it needs - #286 simply doesn't apply to this type
+// anymore. QualifiedCallWorksInsideRecipeAndReactsToParameterChanges below still
+// uses the qualified form anyway, since that test is really about the *separate*
+// lazy-evaluation hazard (see its own comment), not about colon-call dispatch.
 
 #include <grunk/dynamic.hpp>
 #include <grunk/plugin.hpp>
@@ -103,28 +110,42 @@ TEST_F(RecipeTest, QualifiedCallWorksInsideRecipeAndReactsToParameterChanges)
     EXPECT_NEAR(w_derivative.value().as<double>(), std::cos(1.0), 1e-9);
 }
 
-// The negative-path counterpart to the test above: instance:method(...) is the
-// idiom every plain create_env()/eval() call in test_load.cpp uses successfully, but
-// inside a recipe step it fails for adtl.adouble specifically, because
-// register_external_type's auto-discovered methods never stamp a
-// DynamicFeature return-type hint (only register_type<T>'s do - see
-// grunk/dynamic/usertype_proxy.hpp's set_return_type_hint call, which
-// grunk/dynamic/external_type_proxy.hpp has no equivalent of). Documented here as a
-// deliberate regression guard: if a future grunk version starts stamping a hint for
-// external_type_proxy too, colon-call would start working and this assertion would
-// start failing loudly - which is exactly the "worth knowing about" signal wanted
-// here, not a bug in this repo.
-TEST_F(RecipeTest, AdoubleColonCallFailsInsideRecipe)
+// instance:method(...) is the idiom every plain create_env()/eval() call in
+// test_load.cpp already used successfully; this confirms it *also* works inside a
+// tracked recipe step now, which it didn't back when adtl.adouble was registered
+// via SWIG/register_external_type (see this file's own top comment and
+// grunk-dev/grunk#286) - a deliberate regression guard the other way round from
+// what this test used to check: if a future change to this repo's own
+// registration ever regresses back to something that doesn't stamp a
+// DynamicFeature return-type hint, colon-call dispatch would start failing again,
+// and this is exactly the test that would catch it.
+TEST_F(RecipeTest, AdoubleColonCallWorksInsideRecipe)
 {
     auto recipe = state_->create_recipe();
-    EXPECT_THROW(
-        recipe.eval(R"(
-            x = adtl.adouble.new(2.0)
-            w = adtl.sin(x)
-            w_value = w:getValue()
-        )"),
-        std::exception
-    );
+    // x:setADValue(0, 1.0) has to happen inside a module, not as a bare colon-call
+    // in steps: directly - the same lazy-evaluation hazard
+    // QualifiedCallWorksInsideRecipeAndReactsToParameterChanges's own comment
+    // documents (a mutating call's own DAG node never runs if nothing reads its
+    // result). Unrelated to what *this* test is actually about (colon-call
+    // dispatch on the *read* side - w:getValue()/w:getADValue(0) below, called
+    // directly in steps: with no module needed, since reading doesn't have this
+    // problem).
+    recipe.insert_module_script("me", R"(
+        function seed(a)
+            local x = adtl.adouble.new(a)
+            x:setADValue(0, 1.0)
+            return x
+        end
+    )");
+    recipe.eval(R"(
+        x = me.seed(2.0)
+        w = adtl.sin(x)
+        w_value = w:getValue()
+        w_derivative = w:getADValue(0)
+    )");
+
+    EXPECT_NEAR(recipe.get_feature("w_value").value().as<double>(), std::sin(2.0), 1e-9);
+    EXPECT_NEAR(recipe.get_feature("w_derivative").value().as<double>(), std::cos(2.0), 1e-9);
 }
 
 // outputs: is the recipe-level mechanism for marking specific features as this

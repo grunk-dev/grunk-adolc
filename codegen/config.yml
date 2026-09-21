@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Jan Kleinert <jan.kleinert@dlr.de>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+# Declarative generator config (see generate.py, a temporary copy of grunk-occt's
+# own - see its own top comment) for this plugin's native ADOL-C binding: one
+# module, pointed at ADOL-C's own public adtl.h (the tapeless adouble header -
+# matches adOCCT's own Standard_Adouble, see ../DESIGN.md's "Native adtl::adouble
+# binding, generated, not hand-written").
+#
+# --occt-include-dir at generate time must be ADOL-C's own install include/
+# directory (e.g. .deps/adolc/include, if built via scripts/install_adolc.sh) -
+# see the `generate_code` pixi task.
+modules:
+  - name: adouble
+    # adtl.h defines everything inline in one header: the adouble class itself,
+    # its constructors/operators/getValue-family methods, and (as `friend`
+    # declarations nested inside the class, not plain namespace-level functions -
+    # see codegen/README.md's "Operator overloads and friend free functions") its
+    # math functions (sin, cos, ...) and the reversed-operand friend operators
+    # (`friend adouble operator+(double, const adouble&)` etc.) that let a Lua
+    # script write `5 + x` as well as `x + 5`.
+    #
+    # Rejected, expected, not pursued (each shows up in generate_code's own
+    # printed summary): getADValue()/setADValue(const double*) (the whole-
+    # derivative-array pointer overloads - no NCollection_Array1/2-style
+    # conversion is registered for a bare double*, only the scalar
+    # getADValue(unsigned int)/setADValue(unsigned int, double) forms this
+    # plugin's own examples/tests actually use), frexp (takes int* - same
+    # bare-pointer-out-param reason), condassign/condeqassign (their own `cond`
+    # parameter's truthiness semantics - "cond.getValue() > 0" - would need a
+    # hand-written wrapper to expose meaningfully rather than the generic
+    # accept-if-mutable-registered-ref rule), the boost-pool-specific static
+    # members (compiled out entirely unless USE_BOOST_POOL, not defined here),
+    # and every conversion operator (operator double() etc. - a different
+    # mechanism than this generator supports, see codegen/README.md).
+    #
+    # No blacklist entries: nothing here needed excluding by name - everything
+    # unsupported is a real, individually-rejected symbol, not silently dropped.
+    headers:
+      - adolc/adtl.h

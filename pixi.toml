@@ -7,10 +7,13 @@ name = "grunk-adolc"
 version = "0.1.0"
 description = "ADOL-C (algorithmic differentiation) plugin for grunk"
 channels = ["conda-forge"]
-# Linux-only, deliberately - see DESIGN.md's "Platform scope": ADOL-C itself builds
-# fine cross-platform, but swig-adol-c (this plugin's own, DLR-internal dependency -
-# see README.md) has only ever been built/verified on Linux, matching the original
-# grunk-occt migration plan's own accepted exception for AD-enabled work.
+# Linux-only for now - see DESIGN.md's "Platform scope". The *original* reason
+# (swig-adol-c, this plugin's former DLR-internal dependency, never built/verified
+# anywhere but Linux) no longer applies now that this plugin links ADOL-C directly
+# (see "Native adtl::adouble binding, generated, not hand-written") - ADOL-C itself
+# builds cross-platform in principle. Widening this is a real, reasonable,
+# currently out-of-scope follow-up, gated on someone actually verifying ADOL-C's
+# own autotools-based build on macOS/Windows, not on anything specific to this repo.
 platforms = ["linux-64"]
 
 [dependencies]
@@ -23,6 +26,9 @@ yaml-cpp = "*"
 libparametric = "*"
 python = ">=3.9"
 gtest = "*"
+# find_package(PkgConfig REQUIRED)'s own dependency - locates ADOL-C via its own
+# adolc.pc (see CMakeLists.txt).
+pkg-config = "*"
 
 [pypi-dependencies]
 # grunk's own Python bindings, needed by examples/run_example.py - see grunk-occt's
@@ -32,26 +38,30 @@ gtest = "*"
 # separate parametric_DIR needed). Pinned to the *same* commit as CMakeLists.txt's own
 # GIT_TAG - bump both together, never independently.
 grunk = { git = "https://github.com/grunk-dev/grunk.git", rev = "c16f519888eae62564145b1ba4c025c1e6dcc6c2" }
+libclang = ">=18.1.1, <19"
+pyyaml = ">=6.0.3, <7"
 
 [target.linux-64.activation.env]
 CMAKE_PREFIX_PATH = "$CONDA_PREFIX"
 SKBUILD_CMAKE_DEFINE = "GRUNK_WITH_TASKFLOW=OFF"
-# adtl_plugin.so links directly against adtl.so, which in turn depends on ADOL-C's
-# own libadolc.so at *runtime* (see README.md's "Runtime note") - PIXI_PROJECT_ROOT
-# is a pixi-provided variable pointing at this repo's own root regardless of cwd, so
+# adtl_plugin.so links directly against ADOL-C's own libadolc.so at *runtime* too,
+# not just at link time (see README.md's "Runtime note") - PIXI_PROJECT_ROOT is a
+# pixi-provided variable pointing at this repo's own root regardless of cwd, so
 # this resolves correctly for every `pixi run` task without needing the exact
 # install prefix baked in by name. Only takes effect if ADOL-C was installed into
-# README.md's own recommended path (build/_deps/ADOL-C/adolc_base) - both lib and
-# lib64 are listed since which one ADOL-C's own `make install` uses is
-# distro-dependent (see README.md); a nonexistent entry here is simply ignored by
-# the dynamic linker, so listing both is harmless. Installed ADOL-C somewhere else?
-# export LD_LIBRARY_PATH yourself instead - see README.md.
-LD_LIBRARY_PATH = "$PIXI_PROJECT_ROOT/build/_deps/ADOL-C/adolc_base/lib64:$PIXI_PROJECT_ROOT/build/_deps/ADOL-C/adolc_base/lib:$LD_LIBRARY_PATH"
+# scripts/install_adolc.sh's own recommended path (.deps/adolc, not build/_deps/ -
+# see that script's own comment for why) - both lib and lib64 are listed since
+# which one ADOL-C's own `make install` uses is distro-dependent (see README.md);
+# a nonexistent entry here is simply ignored by the dynamic linker/pkg-config, so
+# listing both is harmless. Installed ADOL-C somewhere else? export
+# LD_LIBRARY_PATH/PKG_CONFIG_PATH yourself instead - see README.md.
+LD_LIBRARY_PATH = "$PIXI_PROJECT_ROOT/.deps/adolc/lib64:$PIXI_PROJECT_ROOT/.deps/adolc/lib:$LD_LIBRARY_PATH"
+PKG_CONFIG_PATH = "$PIXI_PROJECT_ROOT/.deps/adolc/lib64/pkgconfig:$PIXI_PROJECT_ROOT/.deps/adolc/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 [tasks]
-install_adolc = { cmd = "bash scripts/install_adolc.sh", description = "Download, build, and install ADOL-C 2.7.2 into build/_deps/ADOL-C/adolc_base (idempotent). See README.md." }
+install_adolc = { cmd = "bash scripts/install_adolc.sh", description = "Download, build, and install ADOL-C 2.7.2 into .deps/adolc (idempotent). See README.md." }
 
-build_swig_adolc = { cmd = "bash scripts/build_swig_adolc.sh", depends-on = ["install_adolc"], description = "Clone and build swig-adol-c (DLR-internal - needs network/credential access) against the ADOL-C install above, producing adtl.so (idempotent). See README.md." }
+generate_code = { cmd = "cmake --build build --target generate_code", description = "Regenerate the native adouble binding (requires -D GRUNK_ADOLC_GENERATE_CODE=ON at configure time)." }
 
 configure = { cmd = [
     "cmake",
@@ -61,11 +71,9 @@ configure = { cmd = [
     "-D", "CMAKE_INSTALL_PREFIX=build/install",
     "-D", "CMAKE_BUILD_TYPE={{ config }}",
     "-D", "CMAKE_EXPORT_COMPILE_COMMANDS=ON",
-    "-D", "ADTL_LIB_DIR={{ adtl_lib_dir }}",
 ], args = [
     { "arg" = "config", "default" = "Release" },
-    { "arg" = "adtl_lib_dir", "default" = "build/_deps/swig-adol-c/build" },
-], description = "Configure the CMake build. See README.md for building ADOL-C/swig-adol-c first." }
+], depends-on = ["install_adolc"], description = "Configure the CMake build. See README.md." }
 
 build = { cmd = "cmake --build build --parallel", description = "Build the plugin and test harness." }
 
@@ -74,5 +82,5 @@ test = { cmd = "ctest --test-dir build --output-on-failure", depends-on = ["buil
 run_examples = { cmd = "python examples/run_example.py build/libadtl_plugin.so", depends-on = ["build"], description = "Run the example recipe under examples/ (see README.md's own \"Examples\" section)." }
 
 [tasks.all]
-depends-on = ["build_swig_adolc", "configure", "build", "test", "run_examples"]
-description = "Bootstrap ADOL-C/swig-adol-c if needed, then configure, build, test, and run the examples."
+depends-on = ["configure", "build", "test", "run_examples"]
+description = "Bootstrap ADOL-C if needed, then configure, build, test, and run the examples."

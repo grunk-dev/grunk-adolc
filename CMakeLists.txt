@@ -17,6 +17,14 @@ list(APPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}")
 
 option(GRUNK_ADOLC_TESTS "Build the test harness" ON)
 
+# Generated-code policy (mirrors grunk-occt's own - see its DESIGN.md): bindings
+# produced by the libclang-based generator (codegen/generate.py, a temporary
+# duplicate of grunk-occt's own - see its own top comment) are checked into
+# generated/ as the source of truth for normal builds, not regenerated on every
+# build. Run via `pixi run generate_code`, which activates the pixi environment
+# (python3 + libclang + pyyaml) before invoking this target.
+option(GRUNK_ADOLC_GENERATE_CODE "Regenerate the native adouble binding using the codegen tool (requires clang/libclang)" OFF)
+
 # --- grunk (FetchContent, pinned to a specific commit - see grunk-occt's own
 # CMakeLists.txt/DESIGN.md for why: grunk's plugin interface and 0.5.0 rewrite are
 # only on `main`, not yet tagged). Pinned to the *same* commit grunk-occt currently
@@ -59,35 +67,37 @@ if(NOT grunk_POPULATED)
     add_subdirectory(${grunk_SOURCE_DIR} ${grunk_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
-# adtl.so is a SWIG-generated Lua module wrapping ADOL-C's tapeless adouble type,
-# built manually from
-# https://gitlab.dlr.de/dlr-sp/occt-differentiation/swig-adol-c.git (branch
-# lua_wrapper, DLR-internal - see README.md for build instructions and why this can't
-# be a FetchContent/conda-forge dependency). adtl_plugin (below) links directly
-# against it and re-exposes it through grunk::plugin's fixed native ABI
-# (src/adtl_plugin.cpp) - ADOL-C itself is never named in this project (no header, no
-# direct library link): it's confined entirely behind adtl.so and, from there, behind
-# adtl_plugin.so.
-set(ADTL_LIB_DIR "${CMAKE_SOURCE_DIR}/build/_deps/swig-adol-c/build" CACHE PATH "Directory containing the built adtl Lua module (adtl.so)")
+# ADOL-C itself (see README.md's "Building" section / scripts/install_adolc.sh) -
+# found via pkg-config, matching grunk-occt's own occt_adolc/ (its AD-enabled
+# build) doing the exact same thing against the exact same ADOL-C install, so
+# both plugins are guaranteed ABI-compatible as long as both are pointed at the
+# same .deps/adolc prefix (see DESIGN.md's own note on why this matters: sharing
+# one native adtl::adouble/Standard_Real registration across plugins requires
+# them to genuinely be the same compiled type, not just the same source).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ADOLC REQUIRED IMPORTED_TARGET GLOBAL adolc)
+list(GET ADOLC_INCLUDE_DIRS 0 ADOLC_INCLUDE_DIR)
 
-# swig_add_library sets PREFIX "" on the adtl target, so the file is literally named
-# "adtl.so" (or "adtl.dylib"/"adtl.dll") with no "lib" prefix - find_library's
-# implicit lib/suffix conventions won't match that, so look it up as a plain file
-# instead.
-find_file(ADTL_LIBRARY
-    NAMES adtl.so adtl.dylib adtl.dll
-    PATHS "${ADTL_LIB_DIR}"
-    NO_DEFAULT_PATH
-)
-
-if(NOT ADTL_LIBRARY)
-    message(FATAL_ERROR "adtl Lua module (adtl.so) not found, define ADTL_LIB_DIR. See README.md for build instructions.")
+# --- code generator (see codegen/README.md - grunk-occt's own copy, not
+# duplicated here): opt-in, not wired as a dependency of adtl_plugin below -
+# regenerated output needs review/diffing before being trusted, not silent
+# regeneration on every build (same policy as grunk-occt's own). Run via
+# `pixi run generate_code`, which activates the pixi environment (python3 +
+# libclang + pyyaml) before invoking this target.
+if(GRUNK_ADOLC_GENERATE_CODE)
+    add_custom_target(generate_code
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/codegen/generate.py
+                --config ${CMAKE_SOURCE_DIR}/codegen/config.yml
+                --occt-include-dir ${ADOLC_INCLUDE_DIR}
+                --output-dir ${CMAKE_SOURCE_DIR}/generated
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Regenerating the native adouble binding (codegen/generate.py)"
+        VERBATIM
+    )
 endif()
 
-message(STATUS "Found adtl Lua module: ${ADTL_LIBRARY}")
-
-add_library(adtl_plugin SHARED src/adtl_plugin.cpp)
-target_link_libraries(adtl_plugin PRIVATE grunk::plugin ${ADTL_LIBRARY})
+add_library(adtl_plugin SHARED src/adtl_plugin.cpp generated/adouble.cpp)
+target_link_libraries(adtl_plugin PRIVATE grunk::plugin PkgConfig::ADOLC)
 
 # --- test harness: loads adtl_plugin via grunk::plugin::load_native and drives it
 # through raw Lua via the sol2 state directly - matches grunk-occt's own test-harness
