@@ -4,12 +4,15 @@
 
 # Linux-only, matching pixi.toml's own `platforms = ["linux-64"]` (see its own
 # comment for why - ADOL-C's autotools-based build has never been verified on
-# macOS/Windows here). ADOL-C is a real from-source build, so .deps/adolc is
-# cached across runs, keyed on scripts/install_adolc.sh (which pins ADOL-C's own
-# version; the script's own idempotency check - see its top comment - is what
-# makes a cache hit skip straight past the actual build) rather than rebuilding
-# it from scratch on every PR. A cache miss (first run, or the script changes)
-# still takes a while - that cost is inherent to building ADOL-C from source, not
+# macOS/Windows here). ADOL-C and grunk are both real from-source builds now
+# (ADOL-C's own autotools build; grunk via find_package(grunk REQUIRED) against
+# scripts/install_grunk.cmake's own .deps/grunk - see CMakeLists.txt's own comment
+# for why grunk is no longer FetchContent-vendored), so .deps/adolc and .deps/grunk
+# are both cached across runs, keyed on their own install scripts (each script's
+# own idempotency check - see its top comment - is what makes a cache hit skip
+# straight past the actual build) rather than rebuilding from scratch on every PR.
+# A cache miss (first run, or either script changes) still takes a while - that
+# cost is inherent to building ADOL-C (and grunk itself) from source, not
 # something this workflow can avoid.
 name: CI
 
@@ -35,11 +38,16 @@ jobs:
         with:
           cache: true
 
-      - name: Cache ADOL-C
+      - name: Cache ADOL-C/grunk
         uses: actions/cache@v4
         with:
-          path: .deps/adolc
-          key: ${{ runner.os }}-adolc-${{ hashFiles('scripts/install_adolc.sh') }}
+          path: |
+            .deps/adolc
+            .deps/grunk
+          key: ${{ runner.os }}-adolc-grunk-${{ hashFiles('scripts/install_adolc.sh', 'scripts/install_grunk.cmake') }}
+
+      - name: Install grunk
+        run: pixi run install_grunk
 
       - name: Install ADOL-C
         run: pixi run install_adolc

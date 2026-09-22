@@ -94,6 +94,7 @@ Or step by step:
 
 ```bash
 pixi run install_adolc   # build/install ADOL-C, if not already done
+pixi run install_grunk   # build/install grunk into .deps/grunk, if not already done
 pixi run configure        # configure the CMake build
 pixi run build             # build adtl_plugin and the test harness
 pixi run test                # run the gtest suite (tests/test_load.cpp, tests/test_recipe.cpp)
@@ -102,6 +103,11 @@ pixi run install               # install adtl_plugin into build/install (see "Pa
 pixi run generate_code         # regenerate generated/adouble.cpp from ADOL-C's own header
                                  # (requires -D GRUNK_ADOLC_GENERATE_CODE=ON at configure time)
 ```
+
+`install_adolc`/`install_grunk` both also run automatically as part of `configure` (and hence
+`build`/`test`/etc.) via its own dependency chain - spelled out above for visibility, and because
+`pixi run all` runs them that way regardless. `adtl_plugin` links grunk dynamically (`find_package
+(grunk)` against `.deps/grunk`, not a vendored copy) - see `DESIGN.md` for why.
 
 ## Packaging / installing
 
@@ -120,6 +126,13 @@ path under `build/` directly once you're consuming this outside the build tree -
 right after `build`, not `install`. `CMAKE_INSTALL_PREFIX` (set by the `configure` task,
 `build/install`) can be overridden - either edit `pixi.toml`'s own `configure` task, or run
 `cmake --install build --prefix <path>` yourself.
+
+`libadtl_plugin.so` itself dynamically links grunk's own shared libraries (`.deps/grunk`, an
+absolute path baked in at build time - see `DESIGN.md`'s "grunk: pre-built dependency, not
+vendored") - loading it from a machine/directory that doesn't have that same `.deps/grunk` install
+present needs `grunk`'s own shared libraries reachable another way (e.g. `LD_LIBRARY_PATH`, or a
+`pixi run install_grunk` of your own pointed at the same path) until this plugin ships as a real,
+independently relocatable binary package.
 
 When consumed via grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build (FetchContent, pinned to a
 specific commit), grunk-occt's own `pixi run -e ad install` picks this up too - see grunk-occt's
@@ -140,6 +153,6 @@ value and derivative against the closed form (`sin(102*x_val)`,
 | Dependency | Source |
 | -- | -- |
 | ADOL-C | [GitHub](https://github.com/coin-or/ADOL-C), built from source (`pixi run install_adolc`) |
-| grunk | FetchContent from GitHub, pinned commit (see `CMakeLists.txt`) |
+| grunk | pinned commit, built and installed automatically into `.deps/grunk` (`scripts/install_grunk.cmake`) |
 | libparametric, yaml-cpp, sol2, lua, taskflow, pkg-config | conda-forge |
 | python, pyyaml, libclang (PyPI) | conda-forge/PyPI, needed only for `codegen/` (opt-in) |

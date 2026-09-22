@@ -36,9 +36,9 @@ pkg-config = "*"
 # (Taskflow doesn't compile against this pinned commit in this environment; grunk's
 # own find_package(parametric REQUIRED) is satisfied by CMAKE_PREFIX_PATH alone, no
 # separate parametric_DIR needed). Pinned to the *same* commit as scripts/
-# install_grunk.sh's own GRUNK_REV (CMakeLists.txt's find_package(grunk) doesn't
+# install_grunk.cmake's own GRUNK_REV (CMakeLists.txt's find_package(grunk) doesn't
 # pin a commit itself - whatever's installed at .deps/grunk is what it finds - so
-# this pin and install_grunk.sh's are the two that must move together, never
+# this pin and install_grunk.cmake's are the two that must move together, never
 # independently). grunk's own CMakeLists.txt builds grunk_recipe/grunk_plugin as
 # SHARED libraries now, so this pip-installed copy dynamically links its own
 # bundled copy of them rather than statically embedding one - see grunk's own
@@ -48,7 +48,7 @@ libclang = ">=18.1.1, <19"
 pyyaml = ">=6.0.3, <7"
 
 [target.linux-64.activation.env]
-# $PIXI_PROJECT_ROOT/.deps/grunk - where scripts/install_grunk.sh installs grunk
+# $PIXI_PROJECT_ROOT/.deps/grunk - where scripts/install_grunk.cmake installs grunk
 # (see CMakeLists.txt's own find_package(grunk REQUIRED) comment for why this
 # replaced FetchContent-vendoring grunk's source) - appended after $CONDA_PREFIX so
 # CMake's own config-mode search still checks the conda environment first for
@@ -73,7 +73,7 @@ PKG_CONFIG_PATH = "$PIXI_PROJECT_ROOT/.deps/adolc/lib64/pkgconfig:$PIXI_PROJECT_
 [tasks]
 install_adolc = { cmd = "bash scripts/install_adolc.sh", description = "Download, build, and install ADOL-C 2.7.2 into .deps/adolc (idempotent). See README.md." }
 
-install_grunk = { cmd = "bash scripts/install_grunk.sh", description = "Clone, build, and install grunk into .deps/grunk (idempotent)." }
+install_grunk = { cmd = "cmake -P scripts/install_grunk.cmake", description = "Clone, build, and install grunk into .deps/grunk (idempotent)." }
 
 generate_code = { cmd = "cmake --build build --target generate_code", description = "Regenerate the native adouble binding (requires -D GRUNK_ADOLC_GENERATE_CODE=ON at configure time)." }
 

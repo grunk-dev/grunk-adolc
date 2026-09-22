@@ -309,3 +309,42 @@ since there's no linkable target to export one for. Verified for real: `pixi run
 which includes this `install()` addition) once this change was committed and pushed here - see
 grunk-occt's own `DESIGN.md`, "Packaging", for that side of the story (verified there via a full
 clean reconfigure + install + test run, not just a pin-value edit).
+
+## grunk: pre-built dependency, not vendored
+
+This repo used to pull grunk's own *source* in via `FetchContent_Declare(grunk ...)` +
+`add_subdirectory`, compiling a private copy of `grunk::core`/`grunk::dynamic`/`grunk::recipe`/
+`grunk::plugin` directly into `adtl_plugin`'s own build. That's gone: `CMakeLists.txt` now does a
+plain `find_package(grunk REQUIRED)` against a pre-built, pre-installed grunk (`scripts/
+install_grunk.cmake`, run automatically via `pixi run configure`'s own `depends-on`, installing
+into `.deps/grunk`). Adopted directly from grunk-occt's own identical change, made for the same
+reason - see its own `DESIGN.md`, "A related hazard, found outside the AD case" and "grunk:
+pre-built dependency, not vendored", for the full story of what problem this solves (two
+independently vendored, independently compiled copies of grunk loaded into the same process - this
+project's own Python bindings and a native plugin like `adtl_plugin`, say - risk a real ABI/
+behavioral mismatch between them; one shared, identically-built grunk everywhere avoids that by
+construction).
+
+**Why a `cmake -P` script, not a shell script**: unlike this repo's own `scripts/install_adolc.sh`
+(bash, fine since this repo is Linux-only today - see "Platform scope" above), `install_grunk` is
+written as a plain CMake script specifically so it's *not* a new obstacle if this repo's own
+platform scope ever widens the way "Platform scope" already flags as a reasonable, currently
+out-of-scope follow-up - cmake is already a hard dependency on every platform, bash is not
+guaranteed on Windows. Adopted from grunk-occt's own identical script (which does need this today,
+since its own `default` environment already targets Windows) rather than writing a Linux-only
+version now and a cross-platform one later.
+
+**RPATH** (`CMakeLists.txt`'s own `CMAKE_INSTALL_RPATH_USE_LINK_PATH` + `$ORIGIN`/an explicit
+`$ENV{CONDA_PREFIX}/lib` entry, mirroring grunk's own identical treatment of itself) is what lets
+`adtl_plugin.so` find grunk's shared libraries at runtime without `LD_LIBRARY_PATH` - verified
+directly via `ldd`/`readelf` with `LD_LIBRARY_PATH` explicitly unset, on both the build-tree and
+`cmake --install`ed artifacts. A `WIN32`-only `POST_BUILD` step (copying `$<TARGET_RUNTIME_DLLS:
+adtl_plugin>`/`$<TARGET_RUNTIME_DLLS:runUnitTests>` next to each target, since Windows has no
+RPATH equivalent) is also in place, ready for if the platform scope ever widens - not independently
+verified on an actual Windows machine in this environment, directly modeled on the identical fix
+grunk-occt found necessary for its own targets (and grunk itself, for its own `runUnitTests.exe`/
+plugin-fixture `.dll`s).
+
+**CI**: `.github/workflows/ci.yml`'s existing ADOL-C cache step now covers `.deps/grunk` alongside
+`.deps/adolc`, keyed on both install scripts together, with its own "Install grunk" step before
+"Install ADOL-C".
