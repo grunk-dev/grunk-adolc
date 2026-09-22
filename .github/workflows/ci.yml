@@ -22,7 +22,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # autoreconf/automake/libtool for ADOL-C's own ./configure step (see
       # scripts/install_adolc.sh's own top comment) - present on GitHub's ubuntu-
