@@ -154,15 +154,21 @@ currently out-of-scope follow-up - gated on someone actually verifying ADOL-C's
 own autotools-based build on macOS/Windows, not on anything specific to this repo
 anymore.
 
-## No CI configured (yet)
+## CI
 
-The *original* reason (`swig-adol-c`, DLR-internal, no public-runner network path
-without provisioning credentials that don't exist) no longer applies either, now
-that "Native adtl::adouble binding" above dropped that dependency - ADOL-C itself
-is public (`github.com/coin-or/ADOL-C`). Setting up CI is now genuinely possible
-in a way it simply wasn't before; still not done as part of that same change
-(a real, separate follow-up task - building ADOL-C from source in CI takes real
-time and its own share of care, not attempted speculatively here).
+The *original* reason CI wasn't configured (`swig-adol-c`, DLR-internal, no
+public-runner network path without provisioning credentials that don't exist) no
+longer applied once "Native adtl::adouble binding" above dropped that dependency -
+ADOL-C itself is public (`github.com/coin-or/ADOL-C`), so building it from source
+in CI is straightforward, not blocked on anything DLR-internal. `.github/workflows/
+ci.yml` (added later, mirroring grunk-occt's own `build-and-test-ad` job almost
+verbatim - single Linux job, autotools installed explicitly rather than relying on
+the runner image's own undocumented contents, `.deps/adolc` cached across runs
+keyed on `scripts/install_adolc.sh`'s own hash) runs `install_adolc` → `configure`
+→ `build` → `test` → `run_examples` → `install` on every PR. Verified locally
+before being added, not just written and assumed correct: a full clean rebuild
+(`rm -rf build`, `pixi run all`) plus `pixi run install` both succeed, matching
+what the workflow itself does step by step.
 
 ## Build instructions are copy-paste-executable, not prose placeholders
 
@@ -171,10 +177,11 @@ from) writes `ADOLC_PREFIX`/`PIXI_ENV` as prose placeholders the reader is expec
 to mentally substitute (e.g. "`-DADOLC_LIB_DIR=ADOLC_PREFIX/lib64`" verbatim, not a
 real shell variable). Rewritten here as real, exported shell variables
 (`$ADOLC_PREFIX`, `$PIXI_ENV`) set once and referenced consistently across both
-build steps, meant to be run as one continuous shell session - since there's no CI
-to catch a transcription mistake in a manually-substituted path (see "No CI
-configured" above), the instructions themselves need to be more resilient than they
-would in a repo where a broken README would at least fail loudly in CI first.
+build steps, meant to be run as one continuous shell session - written back when
+there was no CI yet to catch a transcription mistake in a manually-substituted
+path (see "CI" above, added later) - the instructions still read this way since
+they remain more resilient regardless, not because the original reasoning still
+fully applies.
 
 Two real gaps found and fixed while doing this, neither present as such in the
 original (a straight copy would have carried them forward):

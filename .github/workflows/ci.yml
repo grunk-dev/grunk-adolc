@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 Jan Kleinert <jan.kleinert@dlr.de>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+# Linux-only, matching pixi.toml's own `platforms = ["linux-64"]` (see its own
+# comment for why - ADOL-C's autotools-based build has never been verified on
+# macOS/Windows here). ADOL-C is a real from-source build, so .deps/adolc is
+# cached across runs, keyed on scripts/install_adolc.sh (which pins ADOL-C's own
+# version; the script's own idempotency check - see its top comment - is what
+# makes a cache hit skip straight past the actual build) rather than rebuilding
+# it from scratch on every PR. A cache miss (first run, or the script changes)
+# still takes a while - that cost is inherent to building ADOL-C from source, not
+# something this workflow can avoid.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # autoreconf/automake/libtool for ADOL-C's own ./configure step (see
+      # scripts/install_adolc.sh's own top comment) - present on GitHub's ubuntu-
+      # latest runner image already, installed explicitly anyway so this job
+      # doesn't depend on that undocumented, changeable image content.
+      - name: Install autotools
+        run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool
+
+      - uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          cache: true
+
+      - name: Cache ADOL-C
+        uses: actions/cache@v4
+        with:
+          path: .deps/adolc
+          key: ${{ runner.os }}-adolc-${{ hashFiles('scripts/install_adolc.sh') }}
+
+      - name: Install ADOL-C
+        run: pixi run install_adolc
+
+      - name: Configure
+        run: pixi run configure Release
+
+      - name: Build
+        run: pixi run build
+
+      - name: Test
+        run: pixi run test
+
+      - name: Run examples
+        run: pixi run run_examples
+
+      - name: Install
+        run: pixi run install
