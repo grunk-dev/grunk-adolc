@@ -35,14 +35,26 @@ pkg-config = "*"
 # own pixi.toml for the identical setup and why each of these overrides is needed
 # (Taskflow doesn't compile against this pinned commit in this environment; grunk's
 # own find_package(parametric REQUIRED) is satisfied by CMAKE_PREFIX_PATH alone, no
-# separate parametric_DIR needed). Pinned to the *same* commit as CMakeLists.txt's own
-# GIT_TAG - bump both together, never independently.
-grunk = { git = "https://github.com/grunk-dev/grunk.git", rev = "c16f519888eae62564145b1ba4c025c1e6dcc6c2" }
+# separate parametric_DIR needed). Pinned to the *same* commit as scripts/
+# install_grunk.sh's own GRUNK_REV (CMakeLists.txt's find_package(grunk) doesn't
+# pin a commit itself - whatever's installed at .deps/grunk is what it finds - so
+# this pin and install_grunk.sh's are the two that must move together, never
+# independently). grunk's own CMakeLists.txt builds grunk_recipe/grunk_plugin as
+# SHARED libraries now, so this pip-installed copy dynamically links its own
+# bundled copy of them rather than statically embedding one - see grunk's own
+# CMakeLists.txt for why that matters.
+grunk = { git = "https://github.com/grunk-dev/grunk.git", rev = "a372159c47d3722e138634ad9997c8037c6fd422" }
 libclang = ">=18.1.1, <19"
 pyyaml = ">=6.0.3, <7"
 
 [target.linux-64.activation.env]
-CMAKE_PREFIX_PATH = "$CONDA_PREFIX"
+# $PIXI_PROJECT_ROOT/.deps/grunk - where scripts/install_grunk.sh installs grunk
+# (see CMakeLists.txt's own find_package(grunk REQUIRED) comment for why this
+# replaced FetchContent-vendoring grunk's source) - appended after $CONDA_PREFIX so
+# CMake's own config-mode search still checks the conda environment first for
+# everything else (Lua, yaml-cpp, parametric, ...), matching every other
+# CMAKE_PREFIX_PATH entry in this project.
+CMAKE_PREFIX_PATH = "$CONDA_PREFIX:$PIXI_PROJECT_ROOT/.deps/grunk"
 SKBUILD_CMAKE_DEFINE = "GRUNK_WITH_TASKFLOW=OFF"
 # adtl_plugin.so links directly against ADOL-C's own libadolc.so at *runtime* too,
 # not just at link time (see README.md's "Runtime note") - PIXI_PROJECT_ROOT is a
@@ -61,6 +73,8 @@ PKG_CONFIG_PATH = "$PIXI_PROJECT_ROOT/.deps/adolc/lib64/pkgconfig:$PIXI_PROJECT_
 [tasks]
 install_adolc = { cmd = "bash scripts/install_adolc.sh", description = "Download, build, and install ADOL-C 2.7.2 into .deps/adolc (idempotent). See README.md." }
 
+install_grunk = { cmd = "bash scripts/install_grunk.sh", description = "Clone, build, and install grunk into .deps/grunk (idempotent)." }
+
 generate_code = { cmd = "cmake --build build --target generate_code", description = "Regenerate the native adouble binding (requires -D GRUNK_ADOLC_GENERATE_CODE=ON at configure time)." }
 
 configure = { cmd = [
@@ -73,7 +87,7 @@ configure = { cmd = [
     "-D", "CMAKE_EXPORT_COMPILE_COMMANDS=ON",
 ], args = [
     { "arg" = "config", "default" = "Release" },
-], depends-on = ["install_adolc"], description = "Configure the CMake build. See README.md." }
+], depends-on = ["install_adolc", "install_grunk"], description = "Configure the CMake build. See README.md." }
 
 build = { cmd = "cmake --build build --parallel", description = "Build the plugin and test harness." }
 

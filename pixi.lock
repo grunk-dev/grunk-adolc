@@ -58,7 +58,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.14-9_cp314.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
-      - pypi: git+https://github.com/grunk-dev/grunk.git?rev=c16f519888eae62564145b1ba4c025c1e6dcc6c2#c16f519888eae62564145b1ba4c025c1e6dcc6c2
+      - pypi: git+https://github.com/grunk-dev/grunk.git?rev=a372159c47d3722e138634ad9997c8037c6fd422#a372159c47d3722e138634ad9997c8037c6fd422
       - pypi: https://files.pythonhosted.org/packages/1d/fc/716c1e62e512ef1c160e7984a73a5fc7df45166f2ff3f254e71c58076f7c/libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/88/f9/16491d7ed2a919954993e48aa941b200f38040928474c9e85ea9e64222c3/pyyaml-6.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
   tools:
@@ -769,7 +769,7 @@ packages:
   run_exports: {}
   size: 118849
   timestamp: 1784250406640
-- pypi: git+https://github.com/grunk-dev/grunk.git?rev=c16f519888eae62564145b1ba4c025c1e6dcc6c2#c16f519888eae62564145b1ba4c025c1e6dcc6c2
+- pypi: git+https://github.com/grunk-dev/grunk.git?rev=a372159c47d3722e138634ad9997c8037c6fd422#a372159c47d3722e138634ad9997c8037c6fd422
   name: grunk
   version: 0.5.0
   requires_python: '>=3.9'
