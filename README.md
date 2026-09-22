@@ -102,9 +102,33 @@ pixi run configure        # configure the CMake build
 pixi run build             # build adtl_plugin and the test harness
 pixi run test                # run the gtest suite (tests/test_load.cpp, tests/test_recipe.cpp)
 pixi run run_examples         # run examples/run_example.py against the built plugin
+pixi run install               # install adtl_plugin into build/install (see "Packaging / installing" below)
 pixi run generate_code         # regenerate generated/adouble.cpp from ADOL-C's own header
                                  # (requires -D GRUNK_ADOLC_GENERATE_CODE=ON at configure time)
 ```
+
+## Packaging / installing
+
+`adtl_plugin` is a runtime-loaded grunk plugin - a consuming application never links against it,
+it dlopens it by path via `grunk::plugin::load_native` (matches grunk-occt's own `occt_plugin` -
+see its README's identical section). So there's no CMake package config to `find_package()` here,
+just the built shared library itself:
+
+```
+pixi run install   # -> build/install/lib/libadtl_plugin.so
+```
+
+Point `grunk::plugin::load_native` (or its Python equivalent) at the installed path instead of a
+path under `build/` directly once you're consuming this outside the build tree - `examples/`/
+`tests/` in this repo itself still reference the build tree directly, since they're meant to run
+right after `build`, not `install`. `CMAKE_INSTALL_PREFIX` (set by the `configure` task,
+`build/install`) can be overridden - either edit `pixi.toml`'s own `configure` task, or run
+`cmake --install build --prefix <path>` yourself.
+
+When consumed via grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build (FetchContent, pinned to a
+specific commit), grunk-occt's own `pixi run -e ad install` does **not** yet pick this up - see
+grunk-occt's `DESIGN.md`, "Step 8: packaging", for why that needs its own FetchContent pin bump,
+a deliberate follow-up once this change is committed and pushed.
 
 ## Examples
 

@@ -287,3 +287,20 @@ hand-written `grunk_plugin_info()` form the original `cad_autodiff` copy still u
 this repo's own grunk pin already includes that macro
 ([grunk-dev/grunk#284](https://github.com/grunk-dev/grunk/pull/284)), so there was no
 reason to carry the older, more verbose form forward into a brand-new repo.
+
+## Packaging
+
+Mirrors grunk-occt's own identical "Step 8: packaging" entry (see its `DESIGN.md`) - `adtl_plugin`
+is a runtime-loaded grunk plugin, dlopened by path via `grunk::plugin::load_native`, never linked
+against by a consuming application, so `install()` here is just `GNUInstallDirs` +
+`install(TARGETS adtl_plugin LIBRARY/RUNTIME/ARCHIVE DESTINATION ...)` - no CMake package config,
+since there's no linkable target to export one for. Verified for real: `pixi run install` installs
+`build/install/lib/libadtl_plugin.so`, and the full test suite still passes afterward.
+
+**Not yet reachable from grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build**: grunk-occt's
+`FetchContent_Declare(grunk-adolc ...)` pins a specific commit (predating this change) - a local
+change to this repo's own `CMakeLists.txt` has no effect on that FetchContent'd copy until it's
+pushed and grunk-occt's own pin is bumped to include it, per that repo's own "bump the pin
+deliberately, in its own PR" policy. Confirmed directly: grunk-occt's own `adtl_plugin` target
+still builds correctly there (unaffected - it doesn't depend on this repo's own `install()`
+addition), it just isn't *installed* by grunk-occt's `pixi run -e ad install` yet.

@@ -8,6 +8,11 @@ project(grunk-adolc VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Step 8 (packaging polish, see DESIGN.md's "Packaging" - mirrors grunk-occt's own
+# identical addition) - standard CMake per-platform install subdirectory names
+# (lib/, bin/, ...) for the install() call further down.
+include(GNUInstallDirs)
+
 # adtl_plugin (below) links the static grunk libraries into a shared object, which
 # requires their objects to be position-independent - set this before grunk's own
 # add_subdirectory call so it applies there too.
@@ -98,6 +103,21 @@ endif()
 
 add_library(adtl_plugin SHARED src/adtl_plugin.cpp generated/adouble.cpp)
 target_link_libraries(adtl_plugin PRIVATE grunk::plugin PkgConfig::ADOLC)
+
+# Step 8 (packaging polish, see DESIGN.md's "Packaging" - mirrors grunk-occt's own
+# identical addition): adtl_plugin is a runtime-loaded grunk plugin, never linked
+# against by a consuming application (grunk::plugin::load_native dlopens it by
+# path) - so there is no CMake target/package-config to export here, just the
+# built shared library itself. LIBRARY/RUNTIME/ARCHIVE cover every platform's own
+# convention for a SHARED target, even though this repo is currently Linux-only
+# (see pixi.toml's own platforms - LIBRARY is the one that actually applies
+# today, RUNTIME/ARCHIVE are here so this doesn't need revisiting if that
+# platform scope ever widens).
+install(TARGETS adtl_plugin
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
 
 # --- test harness: loads adtl_plugin via grunk::plugin::load_native and drives it
 # through raw Lua via the sol2 state directly - matches grunk-occt's own test-harness

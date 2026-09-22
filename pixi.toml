@@ -79,6 +79,8 @@ build = { cmd = "cmake --build build --parallel", description = "Build the plugi
 
 test = { cmd = "ctest --test-dir build --output-on-failure", depends-on = ["build"], description = "Run the test harness." }
 
+install = { cmd = "cmake --install build", depends-on = ["build"], description = "Install adtl_plugin into build/install (CMAKE_INSTALL_PREFIX, set by the configure task) - run `cmake --install build --prefix <path>` directly for a different location." }
+
 run_examples = { cmd = "python examples/run_example.py build/libadtl_plugin.so", depends-on = ["build"], description = "Run the example recipe under examples/ (see README.md's own \"Examples\" section)." }
 
 [tasks.all]
