@@ -348,3 +348,26 @@ plugin-fixture `.dll`s).
 **CI**: `.github/workflows/ci.yml`'s existing ADOL-C cache step now covers `.deps/grunk` alongside
 `.deps/adolc`, keyed on both install scripts together, with its own "Install grunk" step before
 "Install ADOL-C".
+
+## `ambiguity_safe_overload_order()`, adopted from grunk-occt
+
+`codegen/generate.py`'s own copy of this generator now sorts each overload set (constructors,
+instance methods, static methods/free functions) by `(arity, count of "real" kinds)` before
+emission, rather than emitting them in whatever order libclang's own cursor-walk (= header
+declaration order) encountered them - adopted verbatim from grunk-occt's own copy of this
+generator, where it fixed a real, previously-undiscovered bug: a sol2 overload-resolution
+ambiguity under `GRUNK_OCCT_WITH_ADOLC`/`GRUNK_ADOLC_WITH_ADOLC` builds, where every
+`Standard_Real`-equivalent parameter becomes `sol::object` (the AD dual-emission pattern) - which
+also matches *any* Lua value, so an all-real overload could silently shadow a same-arity, more
+specific one registered later. See grunk-occt's own `DESIGN.md`, "sol2 overload-resolution
+ambiguity under GRUNK_OCCT_WITH_ADOLC", for the full story (it broke
+`examples/tank_model.grr.yml` under AD for an entire migration step before being root-caused).
+
+This module's own surface (`adtl::adouble`'s constructors/operators) hasn't been observed to hit
+the specific pattern that bug needed - regenerating with this fix touched only 8 lines
+(`generated/adouble.cpp`'s own `condassign`/`condeqassign` overloads, reordered by arity, not by
+any real ambiguity - both overloads there are genuinely all-`adouble`, nothing for the sort to
+disambiguate). Applied here anyway, since the underlying hazard isn't specific to grunk-occt's own
+OCCT wrapping, and the reorder is a safe no-op whenever a same-arity overload set has no "real" vs.
+concretely-typed distinction to begin with. Verified: `pixi run test` still passes (5/5) after
+regenerating.

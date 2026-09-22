@@ -109,11 +109,11 @@ void register_adouble(grunk::plugin_namespace& ns)
     ));
     ns.register_function("erf", [](const adouble & a) -> adouble { return adtl::erf(a); });
     ns.register_function("condassign", sol::overload(
-        [](adouble & res, const adouble & cond, const adouble & arg1, const adouble & arg2) { adtl::condassign(res, cond, arg1, arg2); },
-        [](adouble & res, const adouble & cond, const adouble & arg) { adtl::condassign(res, cond, arg); }
+        [](adouble & res, const adouble & cond, const adouble & arg) { adtl::condassign(res, cond, arg); },
+        [](adouble & res, const adouble & cond, const adouble & arg1, const adouble & arg2) { adtl::condassign(res, cond, arg1, arg2); }
     ));
     ns.register_function("condeqassign", sol::overload(
-        [](adouble & res, const adouble & cond, const adouble & arg1, const adouble & arg2) { adtl::condeqassign(res, cond, arg1, arg2); },
-        [](adouble & res, const adouble & cond, const adouble & arg) { adtl::condeqassign(res, cond, arg); }
+        [](adouble & res, const adouble & cond, const adouble & arg) { adtl::condeqassign(res, cond, arg); },
+        [](adouble & res, const adouble & cond, const adouble & arg1, const adouble & arg2) { adtl::condeqassign(res, cond, arg1, arg2); }
     ));
 }

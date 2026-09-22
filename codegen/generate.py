@@ -887,6 +887,31 @@ def emit_operator_lambda(c: Callable) -> str:
             f"{{ return self {c.operator_token} {c.params[0].name}; }}")
 
 
+def ambiguity_safe_overload_order(
+    overloads: list[tuple[Callable, list[str]]],
+) -> list[tuple[Callable, list[str]]]:
+    """Reorders a same-name overload set so sol2 tries the most concretely-typed
+    signature first, for each argument count.
+
+    Adopted verbatim from grunk-occt's own copy of this generator (see its
+    DESIGN.md, "sol2 overload-resolution ambiguity under GRUNK_OCCT_WITH_ADOLC",
+    for the full story - a real bug that broke examples/tank_model.grr.yml under
+    AD for an entire migration step before being root-caused). This module's own
+    surface (adtl::adouble's constructors/operators) hasn't been observed to hit
+    the specific pattern that bug needed (an all-real overload sharing an arity
+    with a differently-typed, more-specific one), but the underlying hazard -
+    `sol::object` parameters (the AD dual-emission pattern) matching *any* Lua
+    value and so silently shadowing a more specific same-arity overload registered
+    later, since sol2 commits to the first candidate whose checks succeed - is
+    general, not specific to grunk-occt's own OCCT wrapping. Applying the same
+    defensive reordering here too, rather than waiting to discover this module
+    needs it the same hard way, costs nothing when it isn't needed: a stable sort
+    keyed on `(arity, count of "real" kinds)` is a no-op whenever a same-arity
+    overload set has no "real" vs. concretely-typed distinction to begin with.
+    """
+    return sorted(overloads, key=lambda ck: (len(ck[1]), ck[1].count("real")))
+
+
 def emit_callable_expr(c: Callable, kinds: list[str], ctor_mode: str) -> str:
     if c.kind == "operator":
         return emit_operator_lambda(c)
@@ -1216,6 +1241,7 @@ void register_{result.name}(grunk::plugin_namespace& ns);
                 continue  # operators always go through the instance-method loop below, never this one
             if not overloads[0][0].is_static:
                 continue
+            overloads = ambiguity_safe_overload_order(overloads)
             if len(overloads) == 1:
                 c, kinds = overloads[0]
                 fun_expr = emit_callable_expr(c, kinds, ctor_mode)
@@ -1285,7 +1311,7 @@ void register_{result.name}(grunk::plugin_namespace& ns);
 
         ctor_mode = result.ctor_mode.get(class_name, "value")
         instance_methods = {
-            method_name: overloads
+            method_name: ambiguity_safe_overload_order(overloads)
             for method_name, overloads in result.accepted_methods.get(class_name, {}).items()
             # An operator group's own overloads mix is_static=False (normal member
             # forms: self OP double, self OP self) and is_static=True (the
@@ -1299,7 +1325,7 @@ void register_{result.name}(grunk::plugin_namespace& ns);
 
         lines = [f'    ns.register_type<{class_name}, sol::automagic_flags::none>("{class_name}")']
 
-        ctors = result.accepted_ctors.get(class_name, [])
+        ctors = ambiguity_safe_overload_order(result.accepted_ctors.get(class_name, []))
         if ctors:
             ctor_exprs = [emit_callable_expr(c, kinds, ctor_mode) for c, kinds in ctors]
             lines.append("        .add_constructors(\n            " + ",\n            ".join(ctor_exprs) + "\n        )")
