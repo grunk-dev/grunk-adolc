@@ -297,10 +297,8 @@ against by a consuming application, so `install()` here is just `GNUInstallDirs`
 since there's no linkable target to export one for. Verified for real: `pixi run install` installs
 `build/install/lib/libadtl_plugin.so`, and the full test suite still passes afterward.
 
-**Not yet reachable from grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build**: grunk-occt's
-`FetchContent_Declare(grunk-adolc ...)` pins a specific commit (predating this change) - a local
-change to this repo's own `CMakeLists.txt` has no effect on that FetchContent'd copy until it's
-pushed and grunk-occt's own pin is bumped to include it, per that repo's own "bump the pin
-deliberately, in its own PR" policy. Confirmed directly: grunk-occt's own `adtl_plugin` target
-still builds correctly there (unaffected - it doesn't depend on this repo's own `install()`
-addition), it just isn't *installed* by grunk-occt's `pixi run -e ad install` yet.
+**Now reachable from grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build**: grunk-occt's
+`FetchContent_Declare(grunk-adolc ...)` pin has since been bumped (to this repo's `233516a`,
+which includes this `install()` addition) once this change was committed and pushed here - see
+grunk-occt's own `DESIGN.md`, "Step 8: packaging", for that side of the story (verified there via
+a full clean reconfigure + install + test run, not just a pin-value edit).

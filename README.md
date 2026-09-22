@@ -126,9 +126,9 @@ right after `build`, not `install`. `CMAKE_INSTALL_PREFIX` (set by the `configur
 `cmake --install build --prefix <path>` yourself.
 
 When consumed via grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build (FetchContent, pinned to a
-specific commit), grunk-occt's own `pixi run -e ad install` does **not** yet pick this up - see
-grunk-occt's `DESIGN.md`, "Step 8: packaging", for why that needs its own FetchContent pin bump,
-a deliberate follow-up once this change is committed and pushed.
+specific commit), grunk-occt's own `pixi run -e ad install` picks this up too - its FetchContent
+pin was bumped to include this change once it was committed and pushed here (see grunk-occt's own
+`DESIGN.md`, "Step 8: packaging").
 
 ## Examples
 
