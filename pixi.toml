@@ -86,3 +86,29 @@ run_examples = { cmd = "python examples/run_example.py build/libadtl_plugin.so",
 [tasks.all]
 depends-on = ["configure", "build", "test", "run_examples"]
 description = "Bootstrap ADOL-C if needed, then configure, build, test, and run the examples."
+
+# REUSE (license-compliance) tooling - its own environment/feature (mirrors
+# grunk-occt's own identical addition), since nothing else here needs it and it
+# has no reason to affect the default environment's own package set. Adding any
+# environment here means pixi no longer creates the "default" one implicitly -
+# `default = {}` keeps it exactly as it was (the base [dependencies]/
+# [pypi-dependencies], no extra feature).
+[environments]
+default = { features = [] }
+tools = { features = ["tools"], no-default-feature = true }
+
+[feature.tools.dependencies]
+python = "*"
+
+[feature.tools.pypi-dependencies]
+reuse = "*"
+
+[feature.tools.tasks]
+_reuse = { cmd = "reuse {{ sub_cmd }}", args = [
+    { "arg" = "sub_cmd", "default" = "lint" },
+] }
+
+[tasks.reuse]
+args = [{ "arg" = "sub_cmd", "default" = "lint" }]
+depends-on = [{ task = "_reuse", environment = "tools", args = ["{{ sub_cmd }}"] }]
+description = "Run the REUSE license-compliance tool. sub_cmd selects the REUSE subcommand (e.g. lint, spdx) - defaults to lint."

@@ -5,11 +5,9 @@
 // Exercises adtl_plugin through a real grunk::recipe (parameters:/steps:/outputs:,
 // dependency tracking, reactive re-evaluation on set_value) rather than
 // test_load.cpp's raw create_env()/eval() harness, which never goes through the
-// recipe/parametric layer at all. This is the class of test the migration plan
-// deferred ("one true grunk::recipe-based end-to-end test comes later") and never
-// actually added for adtl specifically until now - examples/run_example.py exercises
-// the recipe layer too, but only via the Python bindings and only end-to-end, not as
-// a fast, always-run C++ unit test.
+// recipe/parametric layer at all - examples/run_example.py exercises the recipe
+// layer too, but only via the Python bindings and only end-to-end, not as a fast,
+// always-run C++ unit test.
 //
 // Also confirms a real, previously-open question is now closed: colon-call
 // dispatch (w:getValue()) inside a recipe step used to fail for adtl.adouble

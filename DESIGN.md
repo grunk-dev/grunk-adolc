@@ -135,13 +135,13 @@ combined "grunk CAD+AD" project:
   derivative; that's the starting point when this is picked up, not something to
   re-derive from scratch.
 
-`grunk-occt`'s own Step 7 (AD validation milestone) and `grunk-geoml` are related but
-distinct: Step 7 validates *grunk-occt's own* generated registration code against an
-AD-enabled OCCT build directly (no geoml involved at all), while `grunk-geoml` is
-about a *different* CAD library (geoml, itself layered on OCCT) combined with
-`grunk-adolc`. Building this repo doesn't, by itself, complete grunk-occt's Step 7 -
-that still needs its own AD-enabled OCCT build and validation, independent of
-whether `grunk-adolc`/`grunk-geoml` exist.
+`grunk-occt`'s own AD validation work and `grunk-geoml` are related but distinct:
+`grunk-occt` validates *its own* generated registration code against an AD-enabled
+OCCT build directly (no geoml involved at all), while `grunk-geoml` is about a
+*different* CAD library (geoml, itself layered on OCCT) combined with
+`grunk-adolc`. Building this repo doesn't, by itself, validate grunk-occt's own AD
+build - that still needs its own AD-enabled OCCT build and validation, independent
+of whether `grunk-adolc`/`grunk-geoml` exist.
 
 ## Platform scope
 
@@ -224,10 +224,10 @@ have write access to that repo and still use it elsewhere.)
 ## `tests/test_recipe.cpp`: adtl_plugin through a real `grunk::recipe`
 
 `tests/test_load.cpp` only ever drives `adtl_plugin` through `create_env()`'s raw, undecorated Lua
-- never through `grunk::recipe`'s dependency-tracked `steps:`/`outputs:` layer, the same "add a
-recipe-level test later" gap `grunk-occt`'s own migration plan flagged and has now also closed (see
-its `DESIGN.md`'s "Test-harness shape"). Working through this directly (not just reasoning about it)
-surfaced two real, distinct gaps:
+- never through `grunk::recipe`'s dependency-tracked `steps:`/`outputs:` layer, the same gap
+`grunk-occt` closed with its own `tests/test_recipe.cpp` (see its `DESIGN.md`'s "Test-harness
+shape"). Working through this directly (not just reasoning about it) surfaced two real, distinct
+gaps:
 
 ### `adtl.adouble` colon-call dispatch inside a recipe - fixed by switching to native registration
 
@@ -297,7 +297,7 @@ reason to carry the older, more verbose form forward into a brand-new repo.
 
 ## Packaging
 
-Mirrors grunk-occt's own identical "Step 8: packaging" entry (see its `DESIGN.md`) - `adtl_plugin`
+Mirrors grunk-occt's own identical "Packaging" entry (see its `DESIGN.md`) - `adtl_plugin`
 is a runtime-loaded grunk plugin, dlopened by path via `grunk::plugin::load_native`, never linked
 against by a consuming application, so `install()` here is just `GNUInstallDirs` +
 `install(TARGETS adtl_plugin LIBRARY/RUNTIME/ARCHIVE DESTINATION ...)` - no CMake package config,
@@ -307,5 +307,5 @@ since there's no linkable target to export one for. Verified for real: `pixi run
 **Now reachable from grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build**: grunk-occt's
 `FetchContent_Declare(grunk-adolc ...)` pin has since been bumped (to this repo's `233516a`,
 which includes this `install()` addition) once this change was committed and pushed here - see
-grunk-occt's own `DESIGN.md`, "Step 8: packaging", for that side of the story (verified there via
-a full clean reconfigure + install + test run, not just a pin-value edit).
+grunk-occt's own `DESIGN.md`, "Packaging", for that side of the story (verified there via a full
+clean reconfigure + install + test run, not just a pin-value edit).
