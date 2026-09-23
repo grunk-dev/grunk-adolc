@@ -13,21 +13,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # (lib/, bin/, ...) for the install() call further down.
 include(GNUInstallDirs)
 
-# adtl_plugin is itself a shared object, so its own sources need to be
+# adolc_plugin is itself a shared object, so its own sources need to be
 # position-independent - grunk's own libraries are SHARED now too (found via
 # find_package below) and no longer need this set on their behalf.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 list(APPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}")
 
-# adtl_plugin dynamically links grunk's own SHARED libraries (grunk_recipe/
+# adolc_plugin dynamically links grunk's own SHARED libraries (grunk_recipe/
 # grunk_plugin) rather than embedding a statically-linked private copy - see
 # scripts/install_grunk.cmake's own comment for why this matters (one physical copy of
 # grunk's dispatch code shared with every other consumer loaded into the same
 # process, not one duplicated per plugin). CMAKE_INSTALL_RPATH_USE_LINK_PATH bakes
 # in the absolute install location of every library actually linked - including
 # wherever find_package(grunk) below resolves to (.deps/grunk by default, see
-# pixi.toml's install_grunk task) - into adtl_plugin's own installed RPATH, so it
+# pixi.toml's install_grunk task) - into adolc_plugin's own installed RPATH, so it
 # finds grunk's shared libraries at runtime without needing LD_LIBRARY_PATH. No
 # effect on Windows - RPATH doesn't exist there; see grunk's own CMakeLists.txt for
 # the platform-DLL-co-location alternative used there instead (not relevant to this
@@ -42,11 +42,12 @@ list(APPEND CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
 option(GRUNK_ADOLC_TESTS "Build the test harness" ON)
 
 # Generated-code policy (mirrors grunk-occt's own - see its DESIGN.md): bindings
-# produced by the libclang-based generator (codegen/generate.py, a temporary
-# duplicate of grunk-occt's own - see its own top comment) are checked into
-# generated/ as the source of truth for normal builds, not regenerated on every
-# build. Run via `pixi run generate_code`, which activates the pixi environment
-# (python3 + libclang + pyyaml) before invoking this target.
+# produced by the libclang-based generator (grunk.codegen, installed as part of the
+# `grunk` package - see grunk/python/grunk/codegen/, no longer a local copy here)
+# are checked into generated/ as the source of truth for normal builds, not
+# regenerated on every build. Run via `pixi run generate_code`, which activates the
+# pixi environment (the installed `grunk` package, providing both the `grunk` CLI
+# and its own libclang/pyyaml dependencies) before invoking this target.
 option(GRUNK_ADOLC_GENERATE_CODE "Regenerate the native adouble binding using the codegen tool (requires clang/libclang)" OFF)
 
 # --- grunk: a pre-built, pre-installed dependency (see scripts/install_grunk.cmake,
@@ -79,45 +80,46 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(ADOLC REQUIRED IMPORTED_TARGET GLOBAL adolc)
 list(GET ADOLC_INCLUDE_DIRS 0 ADOLC_INCLUDE_DIR)
 
-# --- code generator (see codegen/README.md - grunk-occt's own copy, not
-# duplicated here): opt-in, not wired as a dependency of adtl_plugin below -
-# regenerated output needs review/diffing before being trusted, not silent
-# regeneration on every build (same policy as grunk-occt's own). Run via
-# `pixi run generate_code`, which activates the pixi environment (python3 +
-# libclang + pyyaml) before invoking this target.
+# --- code generator (see grunk's own python/grunk/codegen/README.md - shared with
+# grunk-occt, not duplicated here): opt-in, not wired as a dependency of
+# adolc_plugin below - regenerated output needs review/diffing before being
+# trusted, not silent regeneration on every build (same policy as grunk-occt's
+# own). Run via `pixi run generate_code`, which activates the pixi environment
+# (the installed `grunk` package, providing both the `grunk` CLI and its own
+# libclang/pyyaml dependencies) before invoking this target.
 if(GRUNK_ADOLC_GENERATE_CODE)
     add_custom_target(generate_code
-        COMMAND python3 ${CMAKE_SOURCE_DIR}/codegen/generate.py
+        COMMAND grunk codegen
                 --config ${CMAKE_SOURCE_DIR}/codegen/config.yml
-                --occt-include-dir ${ADOLC_INCLUDE_DIR}
+                --include-dir ${ADOLC_INCLUDE_DIR}
                 --output-dir ${CMAKE_SOURCE_DIR}/generated
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Regenerating the native adouble binding (codegen/generate.py)"
+        COMMENT "Regenerating the native adouble binding (grunk codegen)"
         VERBATIM
     )
 endif()
 
-add_library(adtl_plugin SHARED src/adtl_plugin.cpp generated/adouble.cpp)
-target_link_libraries(adtl_plugin PRIVATE grunk::plugin PkgConfig::ADOLC)
+add_library(adolc_plugin SHARED src/adolc_plugin.cpp generated/adouble.cpp)
+target_link_libraries(adolc_plugin PRIVATE grunk::plugin PkgConfig::ADOLC)
 
 # Windows only (this repo is Linux-only today - see pixi.toml's own platforms -
 # but kept ready for if that scope ever widens, same as the LIBRARY/RUNTIME/ARCHIVE
 # split below already is): Windows has no RPATH/RUNPATH mechanism, so a DLL loaded
-# via an absolute path (grunk::plugin::load_native dlopens adtl_plugin this way)
+# via an absolute path (grunk::plugin::load_native dlopens adolc_plugin this way)
 # needs grunk's own DLLs (grunk's libraries are SHARED now - see find_package
 # (grunk)'s own comment above) copied next to itself, since it searches its own
 # directory first for its own dependencies.
 if (WIN32)
-    add_custom_command(TARGET adtl_plugin POST_BUILD
+    add_custom_command(TARGET adolc_plugin POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:adtl_plugin>
-            $<TARGET_FILE_DIR:adtl_plugin>
+            $<TARGET_RUNTIME_DLLS:adolc_plugin>
+            $<TARGET_FILE_DIR:adolc_plugin>
         COMMAND_EXPAND_LISTS
     )
 endif()
 
 # Step 8 (packaging polish, see DESIGN.md's "Packaging" - mirrors grunk-occt's own
-# identical addition): adtl_plugin is a runtime-loaded grunk plugin, never linked
+# identical addition): adolc_plugin is a runtime-loaded grunk plugin, never linked
 # against by a consuming application (grunk::plugin::load_native dlopens it by
 # path) - so there is no CMake target/package-config to export here, just the
 # built shared library itself. LIBRARY/RUNTIME/ARCHIVE cover every platform's own
@@ -125,13 +127,13 @@ endif()
 # (see pixi.toml's own platforms - LIBRARY is the one that actually applies
 # today, RUNTIME/ARCHIVE are here so this doesn't need revisiting if that
 # platform scope ever widens).
-install(TARGETS adtl_plugin
+install(TARGETS adolc_plugin
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-# --- test harness: loads adtl_plugin via grunk::plugin::load_native and drives it
+# --- test harness: loads adolc_plugin via grunk::plugin::load_native and drives it
 # through raw Lua via the sol2 state directly - matches grunk-occt's own test-harness
 # shape (see its DESIGN.md).
 if(GRUNK_ADOLC_TESTS)
@@ -145,11 +147,11 @@ if(GRUNK_ADOLC_TESTS)
     )
     target_link_libraries(runUnitTests PRIVATE grunk::plugin grunk::recipe GTest::gtest_main)
     target_compile_definitions(runUnitTests PRIVATE
-        ADTL_PLUGIN_SO_PATH="$<TARGET_FILE:adtl_plugin>"
+        ADOLC_PLUGIN_SO_PATH="$<TARGET_FILE:adolc_plugin>"
     )
-    add_dependencies(runUnitTests adtl_plugin)
+    add_dependencies(runUnitTests adolc_plugin)
 
-    # Windows only - see adtl_plugin's own, more detailed comment above. `pixi run
+    # Windows only - see adolc_plugin's own, more detailed comment above. `pixi run
     # test` runs `ctest --test-dir build` directly against the build tree, before
     # any install step, so runUnitTests.exe needs grunk's DLLs copied next to
     # itself the same way.

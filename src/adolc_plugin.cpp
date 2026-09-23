@@ -7,11 +7,13 @@
 // generated, not hand-written" for why this replaced the previous SWIG-based one -
 // preserved for reference on the swig-adtl-plugin branch, not deleted): links
 // directly against ADOL-C's own public header (adolc/adtl.h) and library
-// (libadolc), registering adtl::adouble as a real, native sol2 usertype via
-// generated/adouble.cpp (register_adouble - see codegen/config.yml). Registered
-// under the *same* PluginInfo name ("adtl") and Lua-facing class name ("adouble")
-// the SWIG-based plugin always used, so every existing recipe/script
-// (examples/test_adolc.grr.yml included) keeps working completely unchanged.
+// (libadolc), registering adtl::adouble (ADOL-C's own C++ type - not renamed, it's
+// upstream) as a real, native sol2 usertype via generated/adouble.cpp
+// (register_adouble - see codegen/config.yml). Registered under the PluginInfo
+// name "adolc" and Lua-facing class name "adouble" - "adolc" (not "adtl", which
+// this plugin's own registration used until it was renamed to match this repo's
+// own name) so every existing recipe/script (examples/test_adolc.grr.yml
+// included) refers to this plugin the same way the repo itself is named.
 //
 // This is also the "intermediate ADOL-C plugin" grunk-occt's own AD-enabled build
 // (GRUNK_OCCT_ENABLE_AD) depends on: once this plugin registers adtl::adouble via
@@ -21,9 +23,8 @@
 // grunk::state that also names adtl::adouble/Standard_Adouble - see grunk-occt's
 // own DESIGN.md's "Reusing one shared Standard_Real/adtl::adouble registration,
 // not two". Load order between this plugin and occt_plugin's own registration
-// doesn't matter (register_occt() there defensively checks state.plugins() for
-// "adtl" and throws a clear error otherwise) - only that this plugin is loaded
-// before any AD-enabled OCCT Lua code actually *runs*.
+// doesn't matter - only that this plugin is loaded before any AD-enabled OCCT Lua
+// code actually *runs*.
 
 #include <grunk/dynamic.hpp>
 #include <grunk/plugin.hpp>
@@ -36,7 +37,7 @@
 
 namespace {
 
-void register_adtl(grunk::state& state, grunk::PluginInfo const& info)
+void register_adolc(grunk::state& state, grunk::PluginInfo const& info)
 {
     auto ns = state.begin_plugin(info);
     register_adouble(ns);
@@ -47,18 +48,18 @@ void register_adtl(grunk::state& state, grunk::PluginInfo const& info)
     // __tostring to round-trip a bare adouble value held directly by a Feature
     // through recipe YAML. Ported directly from the previous SWIG-based plugin's
     // own identical convention (see the swig-adtl-plugin branch) -
-    // "adtl.adouble.new(<value>)" - just far simpler to add here: a native sol2
+    // "adolc.adouble.new(<value>)" - just far simpler to add here: a native sol2
     // usertype's __tostring needs no SWIG-__index bridging at all, unlike the
     // SWIG-Lua userdata the previous version had to work around by hand.
     ns.modify_type<adtl::adouble>("adouble").add_member_function(sol::meta_function::to_string,
         [](adtl::adouble const& self) -> std::string {
-            return "adtl.adouble.new(" + grunk::to_string(self.getValue()) + ")";
+            return "adolc.adouble.new(" + grunk::to_string(self.getValue()) + ")";
         }
     );
 }
 
 } // anonymous namespace
 
-GRUNK_PLUGIN_INFO("adtl", "2.7.2") // matches the wrapped ADOL-C release
+GRUNK_PLUGIN_INFO("adolc", "2.7.2") // matches the wrapped ADOL-C release
 
-GRUNK_PLUGIN_REGISTER(register_adtl)
+GRUNK_PLUGIN_REGISTER(register_adolc)

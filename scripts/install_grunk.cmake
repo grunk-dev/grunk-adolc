@@ -15,8 +15,8 @@
 # (see its own comment for why .deps/, not build/_deps/).
 #
 # CMakeLists.txt used to FetchContent+add_subdirectory grunk's source directly,
-# statically linking its compiled libraries into adtl_plugin - replaced with this
-# bootstrap + find_package(grunk REQUIRED) so adtl_plugin instead dynamically links
+# statically linking its compiled libraries into adolc_plugin - replaced with this
+# bootstrap + find_package(grunk REQUIRED) so adolc_plugin instead dynamically links
 # grunk's own SHARED libraries (grunk's own CMakeLists.txt builds grunk_recipe/
 # grunk_plugin as SHARED - see its own top-level CMakeLists.txt comment). A plugin
 # that statically embeds its own private copy of grunk's dispatch code, loaded into
@@ -29,7 +29,7 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-set(GRUNK_REV "a372159c47d3722e138634ad9997c8037c6fd422")
+set(GRUNK_REV "5f5f815d5f9b0a7d4da6f2ec0ead0d6b51b0c32d")
 
 get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(GRUNK_PREFIX "${PROJECT_ROOT}/.deps/grunk")
@@ -62,7 +62,7 @@ endif()
 run_or_die(COMMAND git fetch origin "${GRUNK_REV}" WORKING_DIRECTORY "${GRUNK_CHECKOUT}")
 run_or_die(COMMAND git checkout "${GRUNK_REV}" WORKING_DIRECTORY "${GRUNK_CHECKOUT}")
 
-# GRUNK_PYTHON=OFF - this bootstrap only ever needs to satisfy adtl_plugin's own
+# GRUNK_PYTHON=OFF - this bootstrap only ever needs to satisfy adolc_plugin's own
 # C++ find_package(grunk REQUIRED); grunk's own Python bindings are a separate,
 # pip-managed dependency (see pixi.toml's [pypi-dependencies]).
 run_or_die(COMMAND "${CMAKE_COMMAND}" -G Ninja -S . -B build

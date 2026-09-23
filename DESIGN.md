@@ -30,7 +30,9 @@ grunk-geoml" below); the original example's combined `CMakeLists.txt`/`main.cpp`
 `grunk-occt`'s own established scaffold conventions instead of the original
 example's `main()`-runs-everything shape).
 
-`src/adtl_plugin.cpp` itself needed no functional changes beyond comments - its own
+`src/adtl_plugin.cpp` (renamed to `src/adolc_plugin.cpp` later - see "Plugin
+identity renamed from `adtl` to `adolc`" at the end of this file) itself needed no
+functional changes beyond comments - its own
 `#include` list (`grunk/grunk.hpp`, `sol/types.hpp`) already confirmed it never
 touched OCCT/geoml at all.
 
@@ -59,9 +61,10 @@ bridging code needed at all**. See `grunk-occt`'s own `DESIGN.md`'s "Reusing one
 shared Standard_Real/adtl::adouble registration, not two" for that side of it.
 
 **Generated, not hand-written, via the same generator `grunk-occt` uses**
-(`codegen/generate.py` - a deliberate, temporary duplicate; see its own top
-comment for why and what the real fix is), pointed at ADOL-C's own public
-`adtl.h` (see `codegen/config.yml`) instead of an OCCT header. This needed real
+(`grunk.codegen`, part of the `grunk` package itself as of "Codegen centralized
+into `grunk.codegen`" at the end of this file - originally a local, temporary
+`codegen/generate.py` duplicate of `grunk-occt`'s own copy), pointed at ADOL-C's
+own public `adtl.h` (see `codegen/config.yml`) instead of an OCCT header. This needed real
 new generator capability (operator overloads, friend free functions - see
 `grunk-occt`'s own `codegen/README.md` for the mechanism) and surfaced several
 real, previously-latent generator bugs along the way, all fixed in `grunk-occt`'s
@@ -78,10 +81,13 @@ API surface automatically: the constructor, `getValue`/`setValue`/`getADValue`/
 `setADValue`, every arithmetic/comparison operator (`+ - * / == < <=`, both
 member and reversed-literal forms, e.g. `x + 5` and `5 + x`), and every math
 free function (`sin`, `cos`, `exp`, `pow`, ...) - registered under their own bare
-name (`adtl.sin`, not `adtl.adtl_sin`), a distinct naming rule from `grunk-occt`'s
+name (`adolc.sin`, not `adolc.adtl_sin`), a distinct naming rule from `grunk-occt`'s
 own "static namespace class" convention (`occt.TopoDS_Face`) this needed adding,
-since ADOL-C's `adtl` is a genuine C++ namespace, not a class imitating one. Only
-`src/adtl_plugin.cpp`'s own `__tostring` registration (grunk's recipe-
+since ADOL-C's `adtl` is a genuine C++ namespace, not a class imitating one (the
+prefix a "namespace class" would have used, `adtl_`, comes from that C++ namespace's
+own name - unrelated to this plugin's own Lua-facing "adolc" registration name,
+renamed since - see "Plugin identity renamed from `adtl` to `adolc`" at the end of
+this file). Only `src/adolc_plugin.cpp`'s own `__tostring` registration (grunk's recipe-
 serialization convention - see its own comment) remains hand-written: the
 generator has no concept of that convention to emit it from, and - unlike the
 previous SWIG-based version's own `__tostring` bridging - needs no special
@@ -221,9 +227,9 @@ any target, confirmed by reading that file directly, not guessed at. Moot now th
 longer builds against `swig-adol-c` at all, but worth reporting/fixing upstream directly if you
 have write access to that repo and still use it elsewhere.)
 
-## `tests/test_recipe.cpp`: adtl_plugin through a real `grunk::recipe`
+## `tests/test_recipe.cpp`: adolc_plugin through a real `grunk::recipe`
 
-`tests/test_load.cpp` only ever drives `adtl_plugin` through `create_env()`'s raw, undecorated Lua
+`tests/test_load.cpp` only ever drives `adolc_plugin` through `create_env()`'s raw, undecorated Lua
 - never through `grunk::recipe`'s dependency-tracked `steps:`/`outputs:` layer, the same gap
 `grunk-occt` closed with its own `tests/test_recipe.cpp` (see its `DESIGN.md`'s "Test-harness
 shape"). Working through this directly (not just reasoning about it) surfaced two real, distinct
@@ -297,12 +303,12 @@ reason to carry the older, more verbose form forward into a brand-new repo.
 
 ## Packaging
 
-Mirrors grunk-occt's own identical "Packaging" entry (see its `DESIGN.md`) - `adtl_plugin`
+Mirrors grunk-occt's own identical "Packaging" entry (see its `DESIGN.md`) - `adolc_plugin`
 is a runtime-loaded grunk plugin, dlopened by path via `grunk::plugin::load_native`, never linked
 against by a consuming application, so `install()` here is just `GNUInstallDirs` +
-`install(TARGETS adtl_plugin LIBRARY/RUNTIME/ARCHIVE DESTINATION ...)` - no CMake package config,
+`install(TARGETS adolc_plugin LIBRARY/RUNTIME/ARCHIVE DESTINATION ...)` - no CMake package config,
 since there's no linkable target to export one for. Verified for real: `pixi run install` installs
-`build/install/lib/libadtl_plugin.so`, and the full test suite still passes afterward.
+`build/install/lib/libadolc_plugin.so`, and the full test suite still passes afterward.
 
 **Now reachable from grunk-occt's own `GRUNK_OCCT_ENABLE_AD` build**: grunk-occt's
 `FetchContent_Declare(grunk-adolc ...)` pin has since been bumped (to this repo's `233516a`,
@@ -314,14 +320,14 @@ clean reconfigure + install + test run, not just a pin-value edit).
 
 This repo used to pull grunk's own *source* in via `FetchContent_Declare(grunk ...)` +
 `add_subdirectory`, compiling a private copy of `grunk::core`/`grunk::dynamic`/`grunk::recipe`/
-`grunk::plugin` directly into `adtl_plugin`'s own build. That's gone: `CMakeLists.txt` now does a
+`grunk::plugin` directly into `adolc_plugin`'s own build. That's gone: `CMakeLists.txt` now does a
 plain `find_package(grunk REQUIRED)` against a pre-built, pre-installed grunk (`scripts/
 install_grunk.cmake`, run automatically via `pixi run configure`'s own `depends-on`, installing
 into `.deps/grunk`). Adopted directly from grunk-occt's own identical change, made for the same
 reason - see its own `DESIGN.md`, "A related hazard, found outside the AD case" and "grunk:
 pre-built dependency, not vendored", for the full story of what problem this solves (two
 independently vendored, independently compiled copies of grunk loaded into the same process - this
-project's own Python bindings and a native plugin like `adtl_plugin`, say - risk a real ABI/
+project's own Python bindings and a native plugin like `adolc_plugin`, say - risk a real ABI/
 behavioral mismatch between them; one shared, identically-built grunk everywhere avoids that by
 construction).
 
@@ -336,10 +342,10 @@ version now and a cross-platform one later.
 
 **RPATH** (`CMakeLists.txt`'s own `CMAKE_INSTALL_RPATH_USE_LINK_PATH` + `$ORIGIN`/an explicit
 `$ENV{CONDA_PREFIX}/lib` entry, mirroring grunk's own identical treatment of itself) is what lets
-`adtl_plugin.so` find grunk's shared libraries at runtime without `LD_LIBRARY_PATH` - verified
+`adolc_plugin.so` find grunk's shared libraries at runtime without `LD_LIBRARY_PATH` - verified
 directly via `ldd`/`readelf` with `LD_LIBRARY_PATH` explicitly unset, on both the build-tree and
 `cmake --install`ed artifacts. A `WIN32`-only `POST_BUILD` step (copying `$<TARGET_RUNTIME_DLLS:
-adtl_plugin>`/`$<TARGET_RUNTIME_DLLS:runUnitTests>` next to each target, since Windows has no
+adolc_plugin>`/`$<TARGET_RUNTIME_DLLS:runUnitTests>` next to each target, since Windows has no
 RPATH equivalent) is also in place, ready for if the platform scope ever widens - not independently
 verified on an actual Windows machine in this environment, directly modeled on the identical fix
 grunk-occt found necessary for its own targets (and grunk itself, for its own `runUnitTests.exe`/
@@ -351,7 +357,8 @@ plugin-fixture `.dll`s).
 
 ## `ambiguity_safe_overload_order()`, adopted from grunk-occt
 
-`codegen/generate.py`'s own copy of this generator now sorts each overload set (constructors,
+This generator (`codegen/generate.py`, at the time - now `grunk.codegen`, see "Codegen
+centralized into `grunk.codegen`" below) sorts each overload set (constructors,
 instance methods, static methods/free functions) by `(arity, count of "real" kinds)` before
 emission, rather than emitting them in whatever order libclang's own cursor-walk (= header
 declaration order) encountered them - adopted verbatim from grunk-occt's own copy of this
@@ -371,3 +378,44 @@ disambiguate). Applied here anyway, since the underlying hazard isn't specific t
 OCCT wrapping, and the reorder is a safe no-op whenever a same-arity overload set has no "real" vs.
 concretely-typed distinction to begin with. Verified: `pixi run test` still passes (5/5) after
 regenerating.
+
+## Codegen centralized into `grunk.codegen`
+
+`codegen/generate.py` (the local, temporary duplicate of `grunk-occt`'s own copy this file's own
+"Native `adtl::adouble` binding" section above already flagged as a real, not-yet-done follow-up)
+has been deleted from this repo. The generator now lives in the `grunk` repo itself, installed as
+part of the `grunk` package (`grunk/python/grunk/codegen/`), and is invoked here via the `grunk`
+console script's `codegen` subcommand (`grunk codegen --config codegen/config.yml --include-dir ...
+--output-dir generated`) rather than a local script path - see `CMakeLists.txt`'s own
+`generate_code` target and `grunk`'s own `python/grunk/codegen/README.md` for the generator's
+design. `codegen/config.yml` stays here (genuinely per-plugin data - the module list, headers,
+blacklist), including a new `helper_namespace: adolc_plugin` key the now-shared generator needs
+(replacing a previously hardcoded `"occt_plugin"` C++ namespace literal in `emit_lambda` - latent/
+dead for this plugin specifically, since `config.yml` never triggers the `real`/`array1`/`array2`
+parameter kinds that call into it, but a real bug once the generator became shared rather than a
+grunk-occt-only copy). The two previously-diverged copies (this repo's had several bug fixes never
+backported to grunk-occt's own; grunk-occt's had `to_real_array1`/`to_real_array2` handling this
+repo's own copy had dropped, which turned out to be load-bearing for grunk-occt specifically, not
+a safe simplification) were reconciled into the one now-shared version - see grunk's own git
+history for the reconciliation itself.
+
+## Plugin identity renamed from `adtl` to `adolc`
+
+This plugin registered itself under the PluginInfo name `"adtl"` (and, correspondingly, the
+Lua-facing namespace table `adtl.*` - `adtl.adouble.new(...)`, `adtl.sin(...)`, etc., and the
+recipe `uses: adtl: 2.7.2` key) from this repo's very first commit through to this point - inherited
+directly from ADOL-C's own tapeless-AD C++ namespace (`adtl::adouble`, from `adolc/adtl.h`, see
+"Native `adtl::adouble` binding" above), simply because that's what the original `cad_autodiff`
+extraction (see "Origin" at the top of this file) already used. Renamed to `adolc` throughout -
+`GRUNK_PLUGIN_INFO("adolc", "2.7.2")`, the Lua-facing `adolc.*` table, `uses: adolc: 2.7.2` - to
+match this repo's own name instead, once the mismatch (repo `grunk-adolc`, plugin identity `adtl`)
+was noticed as confusing rather than intentional.
+
+The C++ type itself is *not* renamed - `adtl::adouble` stays exactly that, since it's ADOL-C's own
+upstream namespace, not this plugin's to rename. Only this plugin's own registration identity
+changed: `src/adtl_plugin.cpp` → `src/adolc_plugin.cpp`, the `adtl_plugin` CMake target/`.so` →
+`adolc_plugin`, `register_adtl(...)` → `register_adolc(...)`, and every Lua-facing `adtl.*`
+reference in `tests/`/`examples/`/this plugin's own `__tostring` output → `adolc.*`. Historical
+narrative earlier in this file (the SWIG-era sections in particular) still says `adtl` throughout,
+deliberately - it's describing what was actually true at each point in this repo's history, not
+retroactively rewritten to match the current name.

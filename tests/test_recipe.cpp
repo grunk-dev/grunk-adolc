@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-// Exercises adtl_plugin through a real grunk::recipe (parameters:/steps:/outputs:,
+// Exercises adolc_plugin through a real grunk::recipe (parameters:/steps:/outputs:,
 // dependency tracking, reactive re-evaluation on set_value) rather than
 // test_load.cpp's raw create_env()/eval() harness, which never goes through the
 // recipe/parametric layer at all - examples/run_example.py exercises the recipe
@@ -38,7 +38,7 @@ protected:
     static void SetUpTestSuite()
     {
         state_ = new grunk::state();
-        grunk::plugin::load_native(*state_, ADTL_PLUGIN_SO_PATH);
+        grunk::plugin::load_native(*state_, ADOLC_PLUGIN_SO_PATH);
     }
 
     static void TearDownTestSuite()
@@ -55,7 +55,7 @@ grunk::state* RecipeTest::state_ = nullptr;
 } // namespace
 
 // The qualified "Type.method(instance, args...)" form - not instance:method(...) -
-// works for an adtl.adouble value produced inside a recipe step, and the result is
+// works for an adolc.adouble value produced inside a recipe step, and the result is
 // itself a tracked, dependency-aware feature: overriding the seed parameter and
 // re-reading the same output reflects the new value, exactly like a plain numeric
 // feature would (see grunk's own tests/cpp/recipe_plugin.cpp, which establishes this
@@ -67,7 +67,7 @@ grunk::state* RecipeTest::state_ = nullptr;
 // becomes a lazily-evaluated DAG node (grunk::ActionDynamic) whose own eval() writes
 // back only its *return* value (see ActionDynamic::eval's res[0]) - it is never
 // triggered at all unless something downstream actually reads that return value.
-// adtl.adouble.setADValue(x, 0, 1.0)'s call node's own result is never assigned to
+// adolc.adouble.setADValue(x, 0, 1.0)'s call node's own result is never assigned to
 // anything and nothing depends on it, so under lazy evaluation it may simply never
 // run - confirmed empirically: it compiles without error, but the seeded direction
 // is silently lost (getADValue reads back 0). A module script sidesteps this
@@ -82,7 +82,7 @@ TEST_F(RecipeTest, QualifiedCallWorksInsideRecipeAndReactsToParameterChanges)
     auto recipe = state_->create_recipe();
     recipe.insert_module_script("me", R"(
         function seed(a)
-            local x = adtl.adouble.new(a)
+            local x = adolc.adouble.new(a)
             x:setADValue(0, 1.0)
             return x
         end
@@ -90,9 +90,9 @@ TEST_F(RecipeTest, QualifiedCallWorksInsideRecipeAndReactsToParameterChanges)
     recipe.eval(R"(
         x_val = grunk.feature(2.0)
         x = me.seed(x_val)
-        w = adtl.sin(x)
-        w_value = adtl.adouble.getValue(w)
-        w_derivative = adtl.adouble.getADValue(w, 0)
+        w = adolc.sin(x)
+        w_value = adolc.adouble.getValue(w)
+        w_derivative = adolc.adouble.getADValue(w, 0)
     )");
 
     auto w_value = recipe.get_feature("w_value");
@@ -102,7 +102,7 @@ TEST_F(RecipeTest, QualifiedCallWorksInsideRecipeAndReactsToParameterChanges)
     EXPECT_NEAR(w_derivative.value().as<double>(), std::cos(2.0), 1e-9);
 
     // Reactive re-evaluation: changing the seed parameter must flow through
-    // adtl.sin/getValue/getADValue exactly as it would for any other feature chain.
+    // adolc.sin/getValue/getADValue exactly as it would for any other feature chain.
     recipe.get_feature("x_val").set_value(1.0);
     EXPECT_NEAR(w_value.value().as<double>(), std::sin(1.0), 1e-9);
     EXPECT_NEAR(w_derivative.value().as<double>(), std::cos(1.0), 1e-9);
@@ -130,14 +130,14 @@ TEST_F(RecipeTest, AdoubleColonCallWorksInsideRecipe)
     // problem).
     recipe.insert_module_script("me", R"(
         function seed(a)
-            local x = adtl.adouble.new(a)
+            local x = adolc.adouble.new(a)
             x:setADValue(0, 1.0)
             return x
         end
     )");
     recipe.eval(R"(
         x = me.seed(2.0)
-        w = adtl.sin(x)
+        w = adolc.sin(x)
         w_value = w:getValue()
         w_derivative = w:getADValue(0)
     )");
@@ -155,9 +155,9 @@ TEST_F(RecipeTest, ExplicitOutputIsReadableViaGetOutput)
 {
     auto recipe = state_->create_recipe();
     recipe.eval(R"(
-        x = adtl.adouble.new(3.0)
-        w = adtl.sin(x)
-        w_value = adtl.adouble.getValue(w)
+        x = adolc.adouble.new(3.0)
+        w = adolc.sin(x)
+        w_value = adolc.adouble.getValue(w)
     )");
     recipe.insert_output("result", "w_value");
 

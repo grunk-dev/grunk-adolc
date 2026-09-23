@@ -3,22 +3,22 @@
 # SPDX-License-Identifier: MPL-2.0
 
 uses:
-  adtl: 2.7.2
+  adolc: 2.7.2
   grunk: 0.5.0
 parameters:
   x_val: 5.0
 modules:
   me: |
     function seed(a)
-       ret = adtl.adouble.new(a)
+       ret = adolc.adouble.new(a)
        ret:setADValue(0,1.)
        return ret
     end
 steps: |
-  y = adtl.adouble.new(17)
+  y = adolc.adouble.new(17)
   x = me.seed(x_val)
   z = x * y
-  w = adtl.sin((z * 6))
+  w = adolc.sin((z * 6))
   w_value = w:getValue()
   w_derivative = w:getADValue(0)
 outputs:
