@@ -8,9 +8,17 @@
 # matches adOCCT's own Standard_Adouble, see ../DESIGN.md's "Native adtl::adouble
 # binding, generated, not hand-written").
 #
-# --occt-include-dir at generate time must be ADOL-C's own install include/
+# --include-dir at generate time must be ADOL-C's own install include/
 # directory (e.g. .deps/adolc/include, if built via scripts/install_adolc.sh) -
 # see the `generate_code` pixi task.
+
+# The C++ namespace generate.py's own emit_lambda emits calls into for its
+# to_real/to_array1/to_array2 conversion helpers (unused by this plugin's own
+# module today - adtl.h never triggers those Param kinds - but still required,
+# since generate.py is shared across plugins and no longer hardcodes a name).
+# Matches this plugin's own target/namespace naming (src/adolc_plugin.cpp).
+helper_namespace: adolc_plugin
+
 modules:
   - name: adouble
     # adtl.h defines everything inline in one header: the adouble class itself,
