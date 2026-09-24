@@ -152,6 +152,5 @@ value and derivative against the closed form (`sin(102*x_val)`,
 | Dependency | Source |
 | -- | -- |
 | ADOL-C | [GitHub](https://github.com/coin-or/ADOL-C), built from source (`pixi run install_adolc`) |
-| grunk | pinned commit, built and installed automatically into `.deps/grunk` (`scripts/install_grunk.cmake`) |
+| grunk | pinned commit, built and installed automatically into `.deps/grunk` (`scripts/install_grunk.cmake`); also provides the `grunk` Python package (the `grunk codegen` CLI, and its own libclang/pyyaml dependencies), needed only for `codegen/` (opt-in) |
 | libparametric, yaml-cpp, sol2, lua, taskflow, pkg-config | conda-forge |
-| python, pyyaml, libclang (PyPI) | conda-forge/PyPI, needed only for `codegen/` (opt-in) |
