@@ -29,7 +29,7 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-set(GRUNK_REV "f7728eb65930fd8b0b011e38f6893681e06981e7")
+set(GRUNK_REV "6fc1365ad4d5e79027afdca238ab5c19b0e9c8e7")
 
 get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(GRUNK_PREFIX "${PROJECT_ROOT}/.deps/grunk")
