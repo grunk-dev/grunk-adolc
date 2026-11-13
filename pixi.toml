@@ -49,7 +49,7 @@ pkg-config = "*"
 # console script and its libclang/pyyaml dependencies come along transitively with
 # this same pin, since grunk.codegen (grunk/python/grunk/codegen/) now lives in the
 # grunk package itself rather than a local codegen/generate.py copy here.
-grunk = { git = "https://github.com/grunk-dev/grunk.git", rev = "583da89f0184ef6333000c45573da65a9dd551d0" }
+grunk = { git = "https://github.com/grunk-dev/grunk.git", rev = "6bf642412c7d501101585a41370050386551f759" }
 
 [target.linux-64.activation.env]
 # $PIXI_PROJECT_ROOT/.deps/grunk - where scripts/install_grunk.cmake installs grunk

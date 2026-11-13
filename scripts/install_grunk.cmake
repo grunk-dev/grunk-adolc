@@ -29,7 +29,22 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-set(GRUNK_REV "583da89f0184ef6333000c45573da65a9dd551d0")
+# Bumped 2026-11-13 from 583da89f0184ef6333000c45573da65a9dd551d0 (23 commits
+# behind) to 6bf642412c7d501101585a41370050386551f759 (grunk's own main, post PR
+# grunk-dev/grunk#315 merge) - catches this repo up to the same pin grunk-occt
+# and grunk-geoml already carry. Notable fixes picked up along the way (see
+# grunk-geoml's own scripts/install_grunk.cmake for the full per-bump history):
+# SOL_ALL_SAFETIES_ON=1 (checked sol2 getters everywhere - a mismatched
+# usertype argument now throws instead of silently corrupting memory),
+# with_std_vector's own cast_to_element by-value fix, classify_param's
+# REJECTED sentinel, a mutable-argument-in-parametric-env safeguard, a
+# DynamicFeature::as() dangling-pointer fix, Handle(Derived)->Handle(Base)
+# smart-pointer inheritance, and sol::meta_function::call registration for
+# Feature-wrapped operator(). Verified via a clean standalone build+test
+# against this new pin (no per-repo workaround needed here, unlike grunk-occt's
+# own geom_extras.hpp fix for SOL_ALL_SAFETIES_ON - this repo's own
+# adolc_plugin registration code had nothing that tripped over it).
+set(GRUNK_REV "6bf642412c7d501101585a41370050386551f759")
 
 get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(GRUNK_PREFIX "${PROJECT_ROOT}/.deps/grunk")
